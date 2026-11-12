@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My wishlist</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Source+Serif+Pro:wght@700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1 id="title" contenteditable="true" spellcheck="false" aria-label="Wishlist name">My wishlist</h1>
+    <button class="btn" id="share"><i data-ic="share"></i><span>Share list</span></button>
+  </div>
+  <p id="viewNote" hidden></p>
+  <div class="catbar">
+    <div class="cats" id="cats" role="group" aria-label="Categories"></div>
+    <button class="chip new" id="addCat" aria-label="Add category" title="Add category"><i data-ic="plus" data-s="16"></i><span>Add category</span></button>
+  </div>
+  <div class="rbar" id="rbar" hidden>
+    <span>Drag the handles to reorder</span>
+    <button class="btn primary" id="reorderDone"><i data-ic="check"></i><span>Done</span></button>
+  </div>
+  <button type="button" class="btn reorder-btn" id="reorderBtn"><i data-ic="reorder"></i><span>Reorder items</span></button>
+  <ul id="list"></ul>
+</div>
+<button class="fab" id="add"><i data-ic="plus" data-s="20"></i><span>Add a gift</span></button>
+<div class="banners" id="banners" aria-live="polite"></div>
+
+<dialog id="dlg">
+  <div class="sheet">
+    <button type="button" class="x" data-close aria-label="Close"><i data-ic="x"></i></button>
+    <div class="slot"></div>
+    <div class="sbody" tabindex="-1" autofocus>
+    <section id="s1">
+      <p class="step">Step 1 of 2</p>
+      <h2>How do you want to add it?</h2>
+      <p class="hint">Paste a product link and we’ll fill in what we can.</p>
+      <label for="fUrl">Product link</label>
+      <input id="fUrl" type="url" inputmode="url" placeholder="https://store.com/product" autocomplete="off" data-req>
+      <div class="foot" style="margin-top:12px"><button type="button" class="btn primary wide" id="useLink"><i data-ic="link"></i><span>Continue with link</span></button></div>
+      <div class="or">or</div>
+      <button type="button" class="btn wide" id="manual"><i data-ic="pencil"></i><span>Add manually</span></button>
+    </section>
+    <section id="s2" hidden>
+      <p class="step" id="step2">Step 2 of 2</p>
+      <h2 id="dTitle">Check the details</h2>
+      <p class="banner" id="banner" hidden></p>
+      <label>Photo</label>
+      <div class="photo">
+        <div class="pic" id="fPic"></div>
+        <button type="button" class="btn" id="pickImg"><i data-ic="image"></i><span>Add photo</span></button>
+        <button type="button" class="btn" id="clrImg" hidden><i data-ic="trash"></i><span>Remove</span></button>
+        <input type="file" id="fFile" accept="image/*" hidden>
+      </div>
+      <label for="fCat">Category</label>
+      <select id="fCat"></select>
+      <label for="fName">Item name <span class="req" aria-hidden="true">*</span></label>
+      <input id="fName" placeholder="Wireless headphones" data-max="80" aria-required="true">
+      <div class="two">
+        <div><label for="fPrice">Price (₱)</label><input id="fPrice" data-req type="number" inputmode="decimal" min="0" step="any" placeholder="0"></div>
+        <div><label for="fLink">Store link</label><input id="fLink" type="url" placeholder="https://" data-req></div>
+      </div>
+      <label for="fNote">Notes for the gift giver</label>
+      <textarea id="fNote" placeholder="Size, color, model…" data-max="200"></textarea>
+      <div class="foot">
+        <button type="button" class="btn" id="back"><i data-ic="back"></i><span>Back</span></button>
+        <button type="button" class="btn primary" id="save"><i data-ic="check"></i><span>Save gift</span></button>
+      </div>
+      <div class="foot" style="margin-top:10px" id="delWrap"><button type="button" class="btn red-o" id="delItem"><i data-ic="trash"></i><span>Delete gift</span></button></div>
+    </section>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="catDlg">
+  <div class="sheet">
+    <button type="button" class="x" data-close aria-label="Close"><i data-ic="x"></i></button>
+    <div class="slot"></div>
+    <div class="sbody" tabindex="-1" autofocus>
+    <h2 id="catTitle">New category</h2>
+    <p class="hint">Pick an icon and a name.</p>
+    <label for="catName">Category name <span class="req" aria-hidden="true">*</span></label>
+    <input id="catName" placeholder="Birthday, Home, Books…" data-max="30" aria-required="true">
+    <label for="catEmoji">Icon</label>
+    <div class="emrow">
+      <input id="catEmoji" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Category icon, any emoji">
+      <p class="hint">Tap the box and switch to your emoji keyboard, or pick a suggestion.</p>
+    </div>
+    <div class="icons" id="catIcons" style="margin-top:12px"></div>
+    <div class="foot">
+      <button type="button" class="btn primary" id="catSave"><i data-ic="check"></i><span>Save category</span></button>
+    </div>
+    <div class="foot" style="margin-top:10px" id="catDelWrap"><button type="button" class="btn red-o" id="catDel"><i data-ic="trash"></i><span>Delete category</span></button></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="shDlg">
+  <div class="sheet">
+    <button type="button" class="x" data-close aria-label="Close"><i data-ic="x"></i></button>
+    <div class="slot"></div>
+    <div class="sbody" tabindex="-1" autofocus>
+      <h2>Share your wishlist</h2>
+      <div id="shBody"></div>
+    </div>
+    
+  </div>
+</dialog>
+
+<dialog id="cdlg" aria-labelledby="cTitle">
+  <div class="confirm" tabindex="-1" autofocus>
+    <button type="button" class="x" data-close aria-label="Close"><i data-ic="x"></i></button>
+    <div class="slot"></div>
+    <h2 id="cTitle">Delete?</h2>
+    <p class="hint" id="cMsg"></p>
+    <div class="foot">
+      <button type="button" class="btn red" id="cYes"><i data-ic="trash"></i><span>Delete</span></button>
+    </div>
+  </div>
+</dialog>
+
+<script type="application/json" id="snap">{"on":true,"updated":1794487520677,"title":"My wishlist","categories":[],"items":[]}</script>
+<script src="app.js"></script>
+</body>
+</html>
