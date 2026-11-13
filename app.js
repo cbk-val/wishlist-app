@@ -568,6 +568,13 @@ function renderOwnerApp() {
         n.hidden = false;
         n.textContent = "View-only";
       }
+      var loginBtn = document.getElementById("owner-login-btn");
+      if (loginBtn) {
+        loginBtn.style.display = "inline-block";
+        loginBtn.onclick = function () {
+          renderLoginScreen(); // or trigger your Supabase auth modal/redirect
+        };
+      }
     } else {
       // Enable full owner editing
       VIEW = false;
