@@ -20,6 +20,27 @@ function renderLoginScreen() {
   }
 }
 
+// --- Check Auth & Toggle Google Login Button ---
+async function checkAuthAndToggleUI() {
+  var googleBtn = document.getElementById("google-login-btn");
+  if (!googleBtn) return;
+
+  try {
+    var sessionRes = await db.auth.getSession();
+    var session = sessionRes && sessionRes.data && sessionRes.data.session;
+
+    if (session && session.user) {
+      // User is logged in: Hide the Google Sign-In button
+      googleBtn.style.display = "none";
+    } else {
+      // User is logged out: Show the Google Sign-In button
+      googleBtn.style.display = "inline-block";
+    }
+  } catch (e) {
+    console.error("Error checking auth status for UI", e);
+  }
+}
+
 function renderOwnerApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -554,6 +575,9 @@ function renderOwnerApp() {
     var session = sessionRes && sessionRes.data && sessionRes.data.session;
     var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
 
+    // Toggle the button visibility right away on boot
+    await checkAuthAndToggleUI();
+
     var isOwner = !!(session && session.user && wlRes.data && session.user.id === wlRes.data.owner_id);
 
     if (!isOwner) {
@@ -716,3 +740,29 @@ setInterval(function () {
     updateDebugPanel();
   }
 }, 3000);
+
+async function signInWithGoogle() {
+  var redirectUrl = (window.location.origin + window.location.pathname)
+    .replace(/index\.html$/, '')
+    .replace(/\/?$/, '/');
+
+  return await db.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: redirectUrl
+    }
+  });
+}
+
+// Wire it up to your button
+document.addEventListener("DOMContentLoaded", function () {
+  var googleBtn = document.getElementById("google-login-btn");
+  if (googleBtn) {
+    googleBtn.onclick = async function () {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        alert("Google sign-in error: " + error.message);
+      }
+    };
+  }
+});
