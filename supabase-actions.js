@@ -1,8 +1,12 @@
 // AUTH: Send Magic Link (no password needed) or Google OAuth
 async function signInWithEmail(email) {
+  var redirectUrl = (window.location.origin + window.location.pathname)
+    .replace(/index\.html$/, '')
+    .replace(/\/?$/, '/');
+
   return await db.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    options: { emailRedirectTo: redirectUrl }
   });
 }
 
@@ -76,3 +80,4 @@ async function persistItemOrder(orderedIds) {
     )
   );
 }
+
