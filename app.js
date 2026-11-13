@@ -1,18 +1,16 @@
-// app.js
+// app.js - Supabase-backed Wishlist App
 
 function renderLoginScreen() {
-  // Show login overlay, completely hide main app
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
 
-  // Wire up the magic link button (if not already done)
   const loginBtn = document.getElementById('login-btn');
   if (loginBtn && !loginBtn.dataset.listenerAttached) {
     loginBtn.dataset.listenerAttached = 'true';
     loginBtn.onclick = async () => {
       const email = document.getElementById('login-email').value.trim();
       if (!email) return;
-      
+
       const status = document.getElementById('login-status');
       status.textContent = 'Sending magic link...';
 
@@ -23,12 +21,9 @@ function renderLoginScreen() {
 }
 
 function renderOwnerApp() {
-  // Hide login overlay, show main app
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-
   console.log("Loading owner app interface...");
-  // TODO: Call your functions here to fetch and display your wishlist categories & items
 }
 
 (function () {
@@ -57,23 +52,48 @@ function renderOwnerApp() {
   function ic(n, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + IC[n] + '"/></svg>' }
   [].forEach.call(document.querySelectorAll("i[data-ic]"), function (el) { el.outerHTML = ic(el.dataset.ic, +el.dataset.s || 18) });
 
-  /* ---------- load + migrate (keeps items from earlier versions) ---------- */
-  function load() {
-    var s = null, k;
-    ["wishlist-v3", "wishlist-v2", "wishlist-v1"].some(function (key) { try { var r = localStorage.getItem(key); if (r) { var p = JSON.parse(r); if (p && p.items) { s = p; return true } } } catch (e) { } return false });
-    s = s || { title: "My wishlist", items: [] };
-    if (!s.title || !String(s.title).trim()) s.title = "My wishlist";
-    if (s.lists && !s.categories) s.categories = s.lists; delete s.lists;
-    s.items.forEach(function (i) { if (i.listId && !i.categoryId) i.categoryId = i.listId; delete i.listId });
-    if (!s.categories || !s.categories.length) s.categories = [{ id: "main", name: "Default", icon: "🎁" }];
-    s.items.forEach(function (i) { if (!i.categoryId || !s.categories.some(function (l) { return l.id === i.categoryId })) i.categoryId = s.categories[0].id; i.price = +i.price > 0 ? +i.price : 0; delete i.emoji; delete i.prio });
-    var OLD = { gift: "🎁", heart: "❤️", star: "⭐", home: "🏠", cake: "🎂", book: "📚", shirt: "👕", game: "🎮", plane: "✈️", tag: "🏷️" };
-    s.categories.forEach(function (l) { if (OLD[l.icon]) l.icon = OLD[l.icon]; if (!l.icon) l.icon = "🎁"; if (l.id === "main" && (!l.name || l.name === "Main list")) l.name = "Default"; if (!l.name) l.name = "Untitled category" });
-    if (!s.cur || !s.categories.some(function (l) { return l.id === s.cur })) s.cur = s.categories[0].id;
-    return s;
+  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false };
+
+  async function loadFromSupabase() {
+    try {
+      var catRes = await db.from('categories').select('*').order('sort_order', { ascending: true });
+      if (!catRes.error && catRes.data && catRes.data.length > 0) {
+        state.categories = catRes.data.map(function(c) {
+          return { id: c.id, name: c.name, icon: c.icon || '🎁' };
+        });
+      } else {
+        state.categories = [{ id: "main", name: "Default", icon: "🎁" }];
+      }
+
+      var itemRes = await db.from('items').select('*').order('sort_order', { ascending: true });
+      if (!itemRes.error && itemRes.data) {
+        state.items = itemRes.data.map(function(i) {
+          return {
+            id: i.id,
+            categoryId: i.category_id,
+            name: i.name,
+            price: i.price,
+            link: i.link,
+            note: i.note,
+            img: i.img,
+            got: i.got || false
+          };
+        });
+      }
+
+      if (!state.cur || !state.categories.some(function(l) { return l.id === state.cur })) {
+        state.cur = state.categories[0].id;
+      }
+
+      render();
+      showCat();
+    } catch (err) {
+      console.error("Failed to load data from Supabase:", err);
+      toast("Error loading wishlist data.");
+    }
   }
-  state = load();
-  function save() { if (VIEW) return; try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (e) { toast("Error. Could not save.") } if (state.sharing) queuePub() }
+
+  function save() { if (VIEW) return; if (state.sharing) queuePub() }
   function money(n) { return "₱" + (Math.round(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] }) }
   document.querySelectorAll("dialog").forEach(function (d) { d.addEventListener("close", function () { var s = d.querySelector(".slot"); if (s) s.innerHTML = ""; clearTimeout(notifyT) }) });
@@ -157,7 +177,7 @@ function renderOwnerApp() {
     }
     function up() {
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
-      var ids = [].map.call(ul.children, function (c) { return +c.dataset.id });
+      var ids = [].map.call(ul.children, function (c) { return c.dataset.id });
       var mine = curItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
       state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id) { return byId[id] }));
       save(); render();
@@ -185,23 +205,38 @@ function renderOwnerApp() {
   });
   $("catIcons").onclick = function (e) { var b = e.target.closest("button"); if (b) setCatIcon(b.dataset.i) };
   $("catDlg").addEventListener("click", function (e) { if (e.target === $("catDlg") || e.target.closest("[data-close]")) $("catDlg").close() });
-  $("catSave").onclick = function () {
+  
+  $("catSave").onclick = async function () {
     var name = $("catName").value.trim();
     if (!name) { setErr($("catName"), "Enter a category name"); return }
     if (state.categories.some(function (c) { return c !== catEdit && c.name.trim().toLowerCase() === name.toLowerCase() })) { setErr($("catName"), "You already have a category with this name"); return }
-    if (catEdit) { catEdit.name = name; catEdit.icon = catIcon; toast("Category updated") }
-    else { var l = { id: "l" + Date.now(), name: name, icon: catIcon }; state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created") }
-    save(); render(); showCat(); $("catDlg").close();
+    
+    if (catEdit) {
+      var { error } = await db.from('categories').update({ name: name, icon: catIcon }).eq('id', catEdit.id);
+      if (error) { toast("Error updating category"); return; }
+      catEdit.name = name; catEdit.icon = catIcon; toast("Category updated");
+    } else {
+      var { data, error } = await db.from('categories').insert([{ name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
+      if (error) { toast("Error creating category: " + error.message); return; }
+      var l = { id: data.id, name: data.name, icon: data.icon };
+      state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created");
+    }
+    render(); showCat(); $("catDlg").close();
   };
+
   $("catDel").onclick = function () {
     var id = catEdit.id, cnt = state.items.filter(function (i) { return i.categoryId === id }).length;
     askConfirm("Delete this category?", "“" + catEdit.name + "” and its " + cnt + (cnt === 1 ? " gift" : " gifts") + " will be deleted. This can’t be undone.", function () { doDelCat(id) });
   };
-  function doDelCat(id) {
+  
+  async function doDelCat(id) {
+    var { error } = await db.from('categories').delete().eq('id', id);
+    if (error) { toast("Error deleting category"); return; }
     state.items = state.items.filter(function (i) { return i.categoryId !== id });
     state.categories = state.categories.filter(function (l) { return l.id !== id });
-    state.cur = state.categories[0].id; reorder = false; save(); render(); showCat(); $("catDlg").close(); toast("Category deleted");
+    state.cur = state.categories[0].id; reorder = false; render(); showCat(); $("catDlg").close(); toast("Category deleted");
   };
+
   var lpT = null, lpFired = false, lpX = 0, lpY = 0;
   function lpCancel() { clearTimeout(lpT); lpT = null }
   $("cats").addEventListener("pointerdown", function (e) {
@@ -229,7 +264,7 @@ function renderOwnerApp() {
     if (ed) { openCatDlg(state.categories.filter(function (c) { return c.id === ed.dataset.edit })[0]); return }
     var b = e.target.closest("[data-c]"); if (!b) return;
     if (b.dataset.c === "__new") { openCatDlg(); return }
-    state.cur = b.dataset.c; reorder = false; save(); render(); showCat();
+    state.cur = b.dataset.c; reorder = false; render(); showCat();
   };
   $("reorderDone").onclick = function () { reorder = false; render() };
 
@@ -287,7 +322,8 @@ function renderOwnerApp() {
     $("banner").textContent = (nm ? "We filled in the name from the link on " + host + ". " : "We couldn’t read a name from this link. ") + "Add the price and a photo below — this page can’t open store pages to read them.";
     show(2);
   }
-  function submit() {
+
+  async function submit() {
     var name = $("fName").value.trim();
     if (!name) { setErr($("fName"), "Add a gift name to continue"); return }
     var link = fixUrl($("fLink").value);
@@ -295,14 +331,64 @@ function renderOwnerApp() {
     var pv = $("fPrice").value.trim();
     if (pv !== "" && !isFinite(+pv)) { setErr($("fPrice"), "Enter a valid price"); return }
     if (pv !== "" && +pv < 0) { setErr($("fPrice"), "Price can’t be negative"); return }
-    var data = { categoryId: $("fCat").value, img: img, name: name, price: parseFloat(pv) || 0, link: link, note: $("fNote").value.trim() };
+
+    var data = {
+      category_id: $("fCat").value,
+      img: img,
+      name: name,
+      price: parseFloat(pv) || 0,
+      link: link,
+      note: $("fNote").value.trim()
+    };
+
     if (editId) {
       var it = state.items.filter(function (i) { return i.id === editId })[0];
-      if (it.categoryId !== data.categoryId) { state.items = state.items.filter(function (i) { return i !== it }); state.items.push(it) }
-      Object.assign(it, data); toast("Gift updated");
-    } else { data.id = Date.now(); data.got = false; state.items.push(data); toast("Gift added") }
-    state.cur = data.categoryId; save(); render(); showCat(); $("dlg").close();
+      var { error: updateError } = await db.from('items').update(data).eq('id', editId);
+      if (updateError) {
+        toast("Error updating gift: " + updateError.message);
+        return;
+      }
+
+      if (it.categoryId !== data.category_id) {
+        state.items = state.items.filter(function (i) { return i !== it });
+        state.items.push(it);
+      }
+      Object.assign(it, {
+        categoryId: data.category_id,
+        name: data.name,
+        price: data.price,
+        link: data.link,
+        note: data.note,
+        img: data.img
+      });
+      toast("Gift updated");
+    } else {
+      data.got = false;
+      var { data: savedItem, error } = await db.from('items').insert([data]).select().single();
+
+      if (error) {
+        toast("Error saving gift: " + error.message);
+        return;
+      }
+
+      state.items.push({
+        id: savedItem.id,
+        categoryId: savedItem.category_id,
+        name: savedItem.name,
+        price: savedItem.price,
+        link: savedItem.link,
+        note: savedItem.note,
+        img: savedItem.img,
+        got: savedItem.got || false
+      });
+      toast("Gift added");
+    }
+
+    $("dlg").close();
+    render();
+    showCat();
   }
+
   function resize(file) {
     var r = new FileReader();
     r.onload = function () {
@@ -342,34 +428,54 @@ function renderOwnerApp() {
   $("back").onclick = function () { show(1) };
   $("save").onclick = submit;
   $("s2").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); submit() } });
-  $("delItem").onclick = function () {
+  
+  $("delItem").onclick = async function () {
     var id = editId, it = state.items.filter(function (i) { return i.id === id })[0];
-    askConfirm("Delete this gift?", "“" + (it ? it.name : "This gift") + "” will be removed from your list. This can’t be undone.", function () { state.items = state.items.filter(function (i) { return i.id !== id }); save(); render(); $("dlg").close(); toast("Gift deleted") });
+    askConfirm("Delete this gift?", "“" + (it ? it.name : "This gift") + "” will be removed from your list. This can’t be undone.", async function () { 
+      var { error } = await db.from('items').delete().eq('id', id);
+      if (error) { toast("Error deleting gift"); return; }
+      state.items = state.items.filter(function (i) { return i.id !== id }); 
+      render(); 
+      $("dlg").close(); 
+      toast("Gift deleted"); 
+    });
   };
+
   $("pickImg").onclick = function () { $("fFile").click() };
   $("clrImg").onclick = function () { setImg("") };
   $("fFile").onchange = function () { if (this.files[0]) resize(this.files[0]); this.value = "" };
 
-  $("list").onclick = function (e) {
+  $("list").onclick = async function (e) {
     var b = e.target.closest("[data-a]");
     if (!b) { closeMenus(); return }
     var a = b.dataset.a;
     if (a === "new") { openFlow(); return }
     if (a === "menu") { toggleMenu(b); return }
     if (a === "more") { var n = b.previousElementSibling, o = n.classList.toggle("open"); b.textContent = o ? "Show less" : "Show more"; b.setAttribute("aria-expanded", String(o)); return }
-    var id = +b.closest("[data-id]").dataset.id;
+    var id = b.closest("[data-id]").dataset.id;
     var it = state.items.filter(function (i) { return i.id === id })[0];
     if (a === "edit") { closeMenus(); openFlow(it); return }
-    if (a === "got") { it.got = !it.got; toast(it.got ? "Marked as got" : "Back on the list") }
-    save(); render();
+    if (a === "got") { 
+      it.got = !it.got; 
+      await db.from('items').update({ got: it.got }).eq('id', id);
+      toast(it.got ? "Marked as got" : "Back on the list"); 
+    }
+    render();
   };
   $("reorderBtn").onclick = function () { if (curItems().length < 2) { toast("Add at least two gifts to reorder."); return } reorder = true; render() };
   function closeMenus() { [].forEach.call(document.querySelectorAll(".menu"), function (m) { m.hidden = true; var li = m.parentNode; li.classList.remove("menu-open"); var t = li.querySelector("[data-a=menu]"); if (t) t.setAttribute("aria-expanded", "false") }) }
   function toggleMenu(btn) { var li = btn.closest(".item"), m = li.querySelector(".menu"), was = !m.hidden; closeMenus(); if (!was) { m.hidden = false; li.classList.add("menu-open"); btn.setAttribute("aria-expanded", "true"); m.querySelector("button").focus() } }
   document.addEventListener("click", function (e) { if (!e.target.closest(".item")) closeMenus() });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenus() });
+  
+  document.addEventListener("keydown", function (e) { 
+    if (e.key === "Escape") { 
+      closeMenus(); 
+      document.querySelectorAll("dialog[open]").forEach(function (dlg) {
+        dlg.close();
+      });
+    } 
+  });
 
-  /* ---------- sharing (view-only link) ---------- */
   var SHARE_URL = "https://claude.ai/artifact/HWHiHzpmAnVa5BS4XBpyvi", LT = "<", pubT = null;
   try { SNAP = JSON.parse($("snap").textContent) } catch (e) { SNAP = null }
   function escTpl(t) { return t.split(LT + "/script").join(LT + "\\/script").split(LT + "!--").join(LT + "\\!--") }
@@ -394,10 +500,10 @@ function renderOwnerApp() {
     var data = snapData(), sig = JSON.stringify(Object.assign({}, data, { updated: 0 }));
     if (!force && sig === state.pubSig) return true;
     var prev = state.pubSig, prevAt = state.pubAt; state.pubSig = sig; state.pubAt = Date.now();
-    try { localStorage.setItem(KEY, JSON.stringify(state)); sessionStorage.setItem("wl-y", String(scrollY)) } catch (e) { }
+    try { sessionStorage.setItem("wl-y", String(scrollY)) } catch (e) { }
     try { await art.publish(buildHtml(data)); return true }
     catch (err) {
-      state.pubSig = prev; state.pubAt = prevAt; try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (e) { }
+      state.pubSig = prev; state.pubAt = prevAt;
       var c = err && err.code;
       if (c === "conflict") return false;
       if (c === "rate_limited") { pubT = setTimeout(function () { doPub(false) }, 30000); return false }
@@ -415,14 +521,13 @@ function renderOwnerApp() {
     }
   }
   var creating = false, noticeT = null;
-  function notice(m) { toast(m) }
   async function startShare() {
     if (state.sharing) { renderShare(); return }
     state.sharing = true; creating = true; renderShare();
     try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
     var ok = await doPub(true);
     creating = false;
-    if (!ok) { state.sharing = false; try { sessionStorage.removeItem("wl-open"); localStorage.setItem(KEY, JSON.stringify(state)) } catch (x) { } }
+    if (!ok) { state.sharing = false; try { sessionStorage.removeItem("wl-open"); } catch (x) { } }
     renderShare();
   }
   function openShare() { if (!$("shDlg").open) $("shDlg").showModal(); startShare() }
@@ -430,16 +535,17 @@ function renderOwnerApp() {
   $("shDlg").addEventListener("click", async function (e) {
     if (e.target === $("shDlg") || e.target.closest("[data-close]")) { $("shDlg").close(); return }
     var b = e.target.closest("button"); if (!b) return;
-    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(SHARE_URL); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } notice(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically. Press and hold the link to copy it."); return }
+    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(SHARE_URL); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
     if (b.id === "shSend") { navigator.share({ title: state.title, url: SHARE_URL }).catch(function () { }); return }
     if (b.id === "shOn") { startShare(); return }
     if (b.id === "shOff") {
       state.sharing = false;
       try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
       var ok = await doPub(true);
-      if (!ok) { state.sharing = !state.sharing; try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (x) { } renderShare() }
+      if (!ok) { state.sharing = !state.sharing; renderShare() }
     }
   });
+
   function boot() {
     function go(owner) {
       document.body.classList.remove("pending");
@@ -447,11 +553,12 @@ function renderOwnerApp() {
         VIEW = true; document.body.classList.add("viewer"); $("title").contentEditable = "false"; $("title").removeAttribute("aria-label");
         state = viewState();
         var n = $("viewNote"); n.hidden = false; n.textContent = "View-only" + (SNAP && SNAP.updated ? " · Updated " + new Date(SNAP.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+        render(); showCat();
+      } else {
+        loadFromSupabase();
+        try { var y = sessionStorage.getItem("wl-y"); if (y) { sessionStorage.removeItem("wl-y"); scrollTo(0, +y) } if (sessionStorage.getItem("wl-open")) { sessionStorage.removeItem("wl-open"); openShare() } } catch (e) { }
       }
-      render(); showCat();
-      if (owner) try { var y = sessionStorage.getItem("wl-y"); if (y) { sessionStorage.removeItem("wl-y"); scrollTo(0, +y) } if (sessionStorage.getItem("wl-open")) { sessionStorage.removeItem("wl-open"); openShare() } } catch (e) { }
     }
-    // no Claude runtime (exported file, GitHub Pages): nothing can say this viewer is not the owner, so open in owner mode
     if (!window.claude) { go(true); return }
     var local = false; try { local = !!localStorage.getItem(KEY) } catch (e) { }
     if (!SNAP || local) { go(true); return }
@@ -460,13 +567,11 @@ function renderOwnerApp() {
     setTimeout(function () { fin(false) }, 3000);
     try { claude.use("user").then(function (u) { fin(!!(u && u.isOwner && u.isOwner())) }, function () { fin(false) }) } catch (e) { fin(false) }
   }
+
   $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
   $("title").addEventListener("blur", function () { if (!$("title").textContent.trim()) { $("title").textContent = state.title; setErr($("title"), "Your wishlist needs a title", true); setTimeout(function () { clearErr($("title")) }, 2600) } });
   $("title").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); e.target.blur() } });
+  
   boot();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(showCat);
 })();
-
-document.addEventListener('DOMContentLoaded', async () => {
-  await initApp();
-});

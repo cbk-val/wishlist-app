@@ -4,10 +4,10 @@ const SUPABASE_KEY = 'sb_publishable_khixfpUDXpCyEpwaeo2NhQ_BjD2ezIz';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // App state
-let currentUser = null;
-let wishlistMeta = null; // { id, title, share_token, sharing_active, updated_at }
-let categories = [];     // [{ id, name, icon, is_default, sort_order }]
-let items = [];          // [{ id, category_id, name, price, link, note, got, sort_order }]
+// let currentUser = null;
+// let wishlistMeta = null; // { id, title, share_token, sharing_active, updated_at }
+// let categories = [];     // [{ id, name, icon, is_default, sort_order }]
+// let items = [];          // [{ id, category_id, name, price, link, note, got, sort_order }]
 
 // 1. BOOTSTRAP: Check for ?s=token (Viewer Mode) vs Owner Mode
 async function initApp() {
@@ -35,11 +35,3 @@ async function initApp() {
   currentUser = session.user;
   await loadOwnerWishlist();
 }
-
-// Listen for magic-link / OAuth sign-in redirects
-db.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session && !currentUser) {
-    currentUser = session.user;
-    loadOwnerWishlist();
-  }
-});

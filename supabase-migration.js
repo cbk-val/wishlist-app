@@ -1,25 +1,33 @@
+// supabase-migration.js
+
 async function loadOwnerWishlist() {
-  // 1. Fetch existing wishlist for this owner
-  let { data: wl } = await db
-    .from('wishlists')
+  console.log("Fetching owner wishlist and items from Supabase...");
+
+  // 1. Fetch categories from the database
+  const { data: catData, error: catError } = await db
+    .from('categories')
     .select('*')
-    .eq('owner_id', currentUser.id)
-    .maybeSingle();
+    .order('sort_order', { ascending: true });
 
-  // 2. First-time user: create wishlist & migrate localStorage if present
-  if (!wl) {
-    wl = await bootstrapNewOwner();
+  if (catError) {
+    console.error("Error loading categories:", catError.message);
+  } else {
+    categories = catData || [];
   }
-  wishlistMeta = wl;
 
-  // 3. Load categories and items in parallel
-  const [catRes, itemRes] = await Promise.all([
-    db.from('categories').select('*').eq('wishlist_id', wl.id).order('sort_order', { ascending: true }),
-    db.from('items').select('*').order('sort_order', { ascending: true })
-  ]);
+  // 2. Fetch wishlist items from the database
+  const { data: itemData, error: itemError } = await db
+    .from('items')
+    .select('*')
+    .order('sort_order', { ascending: true });
 
-  categories = catRes.data || [];
-  items = itemRes.data || [];
+  if (itemError) {
+    console.error("Error loading items:", itemError.message);
+  } else {
+    items = itemData || [];
+  }
+
+  // 3. Switch the UI from the login screen to your actual wishlist app
   renderOwnerApp();
 }
 
@@ -92,3 +100,11 @@ async function bootstrapNewOwner() {
   localStorage.removeItem('wishlist-v3');
   return wl;
 }
+
+// Listen for magic-link / OAuth sign-in redirects
+db.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session && !currentUser) {
+    currentUser = session.user;
+    loadOwnerWishlist();
+  }
+});

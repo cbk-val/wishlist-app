@@ -151,17 +151,12 @@
     </dialog>
   </div>
 
-  <!-- 2. Client & shared state (must load first among your files) -->
+  <!-- 2. Database client setup (defines `db`) -->
   <script src="supabase-client.js"></script>
 
-  <!-- 3. Data loading & localStorage migration -->
-  <script src="supabase-migration.js"></script>
-
-  <!-- 4. CRUD & sharing helpers -->
+  <!-- 3. Actions & Migration functions (defines saveGift, loadOwnerWishlist, etc.) -->
   <script src="supabase-actions.js"></script>
-
-  <!-- <script type="application/json"
-    id="snap">{"on":true,"updated":1794487520677,"title":"My wishlist","categories":[],"items":[]}</script> -->
+  <script src="supabase-migration.js"></script>
 
   <!-- 5. Your existing UI/app logic -->
   <script src="app.js"></script>
