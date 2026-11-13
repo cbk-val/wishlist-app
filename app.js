@@ -58,7 +58,7 @@ function renderOwnerApp() {
     try {
       var catRes = await db.from('categories').select('*').order('sort_order', { ascending: true });
       if (!catRes.error && catRes.data && catRes.data.length > 0) {
-        state.categories = catRes.data.map(function(c) {
+        state.categories = catRes.data.map(function (c) {
           return { id: c.id, name: c.name, icon: c.icon || '🎁' };
         });
       } else {
@@ -67,7 +67,7 @@ function renderOwnerApp() {
 
       var itemRes = await db.from('items').select('*').order('sort_order', { ascending: true });
       if (!itemRes.error && itemRes.data) {
-        state.items = itemRes.data.map(function(i) {
+        state.items = itemRes.data.map(function (i) {
           return {
             id: i.id,
             categoryId: i.category_id,
@@ -81,7 +81,7 @@ function renderOwnerApp() {
         });
       }
 
-      if (!state.cur || !state.categories.some(function(l) { return l.id === state.cur })) {
+      if (!state.cur || !state.categories.some(function (l) { return l.id === state.cur })) {
         state.cur = state.categories[0].id;
       }
 
@@ -205,12 +205,12 @@ function renderOwnerApp() {
   });
   $("catIcons").onclick = function (e) { var b = e.target.closest("button"); if (b) setCatIcon(b.dataset.i) };
   $("catDlg").addEventListener("click", function (e) { if (e.target === $("catDlg") || e.target.closest("[data-close]")) $("catDlg").close() });
-  
+
   $("catSave").onclick = async function () {
     var name = $("catName").value.trim();
     if (!name) { setErr($("catName"), "Enter a category name"); return }
     if (state.categories.some(function (c) { return c !== catEdit && c.name.trim().toLowerCase() === name.toLowerCase() })) { setErr($("catName"), "You already have a category with this name"); return }
-    
+
     if (catEdit) {
       var { error } = await db.from('categories').update({ name: name, icon: catIcon }).eq('id', catEdit.id);
       if (error) { toast("Error updating category"); return; }
@@ -228,7 +228,7 @@ function renderOwnerApp() {
     var id = catEdit.id, cnt = state.items.filter(function (i) { return i.categoryId === id }).length;
     askConfirm("Delete this category?", "“" + catEdit.name + "” and its " + cnt + (cnt === 1 ? " gift" : " gifts") + " will be deleted. This can’t be undone.", function () { doDelCat(id) });
   };
-  
+
   async function doDelCat(id) {
     var { error } = await db.from('categories').delete().eq('id', id);
     if (error) { toast("Error deleting category"); return; }
@@ -428,16 +428,16 @@ function renderOwnerApp() {
   $("back").onclick = function () { show(1) };
   $("save").onclick = submit;
   $("s2").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); submit() } });
-  
+
   $("delItem").onclick = async function () {
     var id = editId, it = state.items.filter(function (i) { return i.id === id })[0];
-    askConfirm("Delete this gift?", "“" + (it ? it.name : "This gift") + "” will be removed from your list. This can’t be undone.", async function () { 
+    askConfirm("Delete this gift?", "“" + (it ? it.name : "This gift") + "” will be removed from your list. This can’t be undone.", async function () {
       var { error } = await db.from('items').delete().eq('id', id);
       if (error) { toast("Error deleting gift"); return; }
-      state.items = state.items.filter(function (i) { return i.id !== id }); 
-      render(); 
-      $("dlg").close(); 
-      toast("Gift deleted"); 
+      state.items = state.items.filter(function (i) { return i.id !== id });
+      render();
+      $("dlg").close();
+      toast("Gift deleted");
     });
   };
 
@@ -455,10 +455,10 @@ function renderOwnerApp() {
     var id = b.closest("[data-id]").dataset.id;
     var it = state.items.filter(function (i) { return i.id === id })[0];
     if (a === "edit") { closeMenus(); openFlow(it); return }
-    if (a === "got") { 
-      it.got = !it.got; 
+    if (a === "got") {
+      it.got = !it.got;
       await db.from('items').update({ got: it.got }).eq('id', id);
-      toast(it.got ? "Marked as got" : "Back on the list"); 
+      toast(it.got ? "Marked as got" : "Back on the list");
     }
     render();
   };
@@ -466,14 +466,14 @@ function renderOwnerApp() {
   function closeMenus() { [].forEach.call(document.querySelectorAll(".menu"), function (m) { m.hidden = true; var li = m.parentNode; li.classList.remove("menu-open"); var t = li.querySelector("[data-a=menu]"); if (t) t.setAttribute("aria-expanded", "false") }) }
   function toggleMenu(btn) { var li = btn.closest(".item"), m = li.querySelector(".menu"), was = !m.hidden; closeMenus(); if (!was) { m.hidden = false; li.classList.add("menu-open"); btn.setAttribute("aria-expanded", "true"); m.querySelector("button").focus() } }
   document.addEventListener("click", function (e) { if (!e.target.closest(".item")) closeMenus() });
-  
-  document.addEventListener("keydown", function (e) { 
-    if (e.key === "Escape") { 
-      closeMenus(); 
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      closeMenus();
       document.querySelectorAll("dialog[open]").forEach(function (dlg) {
         dlg.close();
       });
-    } 
+    }
   });
 
   var SHARE_URL = "https://claude.ai/artifact/HWHiHzpmAnVa5BS4XBpyvi", LT = "<", pubT = null;
@@ -546,32 +546,166 @@ function renderOwnerApp() {
     }
   });
 
-  function boot() {
-    function go(owner) {
-      document.body.classList.remove("pending");
-      if (!owner) {
-        VIEW = true; document.body.classList.add("viewer"); $("title").contentEditable = "false"; $("title").removeAttribute("aria-label");
-        state = viewState();
-        var n = $("viewNote"); n.hidden = false; n.textContent = "View-only" + (SNAP && SNAP.updated ? " · Updated " + new Date(SNAP.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
-        render(); showCat();
-      } else {
-        loadFromSupabase();
-        try { var y = sessionStorage.getItem("wl-y"); if (y) { sessionStorage.removeItem("wl-y"); scrollTo(0, +y) } if (sessionStorage.getItem("wl-open")) { sessionStorage.removeItem("wl-open"); openShare() } } catch (e) { }
-      }
-    }
-    if (!window.claude) { go(true); return }
-    var local = false; try { local = !!localStorage.getItem(KEY) } catch (e) { }
-    if (!SNAP || local) { go(true); return }
-    var done = false; function fin(o) { if (!done) { done = true; go(o) } }
-    document.body.classList.add("pending");
-    setTimeout(function () { fin(false) }, 3000);
-    try { claude.use("user").then(function (u) { fin(!!(u && u.isOwner && u.isOwner())) }, function () { fin(false) }) } catch (e) { fin(false) }
-  }
+  async function boot() {
+    document.body.classList.remove("pending");
 
+    // Check actual Supabase session & wishlist ownership
+    var sessionRes = await db.auth.getSession();
+    var session = sessionRes && sessionRes.data && sessionRes.data.session;
+    var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
+
+    var isOwner = !!(session && session.user && wlRes.data && session.user.id === wlRes.data.owner_id);
+
+    if (!isOwner) {
+      // Enforce read-only viewer mode for guests or non-owners
+      VIEW = true;
+      document.body.classList.add("viewer");
+      $("title").contentEditable = "false";
+      $("title").removeAttribute("aria-label");
+
+      var n = $("viewNote");
+      if (n) {
+        n.hidden = false;
+        n.textContent = "View-only";
+      }
+    } else {
+      // Enable full owner editing
+      VIEW = false;
+      document.body.classList.remove("viewer");
+      $("title").contentEditable = "true";
+    }
+
+    if (wlRes.data && wlRes.data.title) {
+      state.title = wlRes.data.title;
+    }
+
+    await loadFromSupabase();
+  }
   $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
   $("title").addEventListener("blur", function () { if (!$("title").textContent.trim()) { $("title").textContent = state.title; setErr($("title"), "Your wishlist needs a title", true); setTimeout(function () { clearErr($("title")) }, 2600) } });
   $("title").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); e.target.blur() } });
-  
+
   boot();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(showCat);
 })();
+
+// --- Debug Panel Controller ---
+async function updateDebugPanel() {
+  var loggedInEl = document.getElementById('dbg-logged-in');
+  var userIdEl = document.getElementById('dbg-user-id');
+  var wishlistEl = document.getElementById('dbg-wishlist');
+  var canEditEl = document.getElementById('dbg-can-edit');
+
+  if (!loggedInEl) return;
+
+  let userEmail = "None";
+  var currentSession = null;
+
+  // 1 & 2. Check auth status & user ID from Supabase session
+  try {
+    var sessionRes = await db.auth.getSession();
+    currentSession = sessionRes && sessionRes.data && sessionRes.data.session;
+
+    if (currentSession && currentSession.user) {
+      loggedInEl.textContent = "Yes";
+      loggedInEl.style.color = "#4ade80"; // green
+      userIdEl.textContent = currentSession.user.id;
+      userEmail = currentSession.user.email || "Unknown Email";
+    } else {
+      loggedInEl.textContent = "No (Anonymous / Guest)";
+      loggedInEl.style.color = "#f87171"; // red
+      userIdEl.textContent = "None";
+    }
+  } catch (e) {
+    loggedInEl.textContent = "Error checking auth";
+    userIdEl.textContent = "N/A";
+  }
+
+  // 3. Fetch whose wishlist we are viewing and show the full owner ID or email
+  let ownerIdVal = "Unknown";
+  try {
+    var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
+    if (!wlRes.error && wlRes.data) {
+      var title = wlRes.data.title || "Wishlist";
+      ownerIdVal = wlRes.data.owner_id || "None";
+
+      var ownerDisplay = (currentSession && currentSession.user && currentSession.user.id === wlRes.data.owner_id)
+        ? userEmail + " (" + ownerIdVal + ")"
+        : "Owner ID: " + ownerIdVal;
+
+      wishlistEl.textContent = title + " (" + ownerDisplay + ")";
+    } else {
+      wishlistEl.textContent = (state && state.title) ? state.title : "My wishlist (No row found)";
+    }
+  } catch (err) {
+    wishlistEl.textContent = (state && state.title) ? state.title : "Default";
+  }
+
+  // 4. Check real edit permission (Logged in AND user ID matches owner_id)
+  var isOwner = (currentSession && currentSession.user && currentSession.user.id === ownerIdVal);
+  var isEditable = isOwner; // You can edit if you are the owner!
+  canEditEl.textContent = isEditable ? "Yes (Owner)" : "No (View-only)";
+  canEditEl.style.color = isEditable ? "#4ade80" : "#f87171";
+}
+
+// Wire up toggle behavior for the debug button
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("debug-toggle-btn");
+  var panel = document.getElementById("debug-panel");
+  var closeBtn = document.getElementById("debug-close");
+
+  if (btn && panel) {
+    btn.onclick = function () {
+      var isVisible = panel.style.display === "block";
+      panel.style.display = isVisible ? "none" : "block";
+      if (!isVisible) {
+        updateDebugPanel(); // Refresh stats whenever opened
+      }
+    };
+  }
+
+  if (closeBtn && panel) {
+    closeBtn.onclick = function () {
+      panel.style.display = "none";
+    };
+  }
+});
+
+// Periodically update debug info if panel is open
+setInterval(function () {
+  var panel = document.getElementById("debug-panel");
+  if (panel && panel.style.display === "block") {
+    updateDebugPanel();
+  }
+}, 3000);
+
+// Wire up toggle behavior for the debug button
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("debug-toggle-btn");
+  var panel = document.getElementById("debug-panel");
+  var closeBtn = document.getElementById("debug-close");
+
+  if (btn && panel) {
+    btn.onclick = function () {
+      var isVisible = panel.style.display === "block";
+      panel.style.display = isVisible ? "none" : "block";
+      if (!isVisible) {
+        updateDebugPanel(); // Refresh stats whenever opened
+      }
+    };
+  }
+
+  if (closeBtn && panel) {
+    closeBtn.onclick = function () {
+      panel.style.display = "none";
+    };
+  }
+});
+
+// Periodically update debug info if panel is open
+setInterval(function () {
+  var panel = document.getElementById("debug-panel");
+  if (panel && panel.style.display === "block") {
+    updateDebugPanel();
+  }
+}, 3000);

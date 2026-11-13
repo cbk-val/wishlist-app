@@ -151,6 +151,29 @@
     </dialog>
   </div>
 
+  <!-- Debug Floating Panel -->
+  <div id="debug-container" style="position: fixed; bottom: 16px; left: 16px; z-index: 9999; font-family: sans-serif;">
+    <button id="debug-toggle-btn"
+      style="background: #111; color: #fff; border: none; padding: 8px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+      🐞 Debug
+    </button>
+
+    <div id="debug-panel"
+      style="display: none; position: absolute; bottom: 40px; left: 0; width: 280px; background: #1e1e1e; color: #f1f1f1; padding: 14px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); font-size: 12px; line-height: 1.5;">
+      <div
+        style="font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 4px; display: flex; justify-content: space-between;">
+        <span>Wishlist Debugger</span>
+        <span id="debug-close" style="cursor: pointer; color: #aaa;">×</span>
+      </div>
+      <div style="margin-bottom: 4px;"><strong>1. Logged In:</strong> <span id="dbg-logged-in">Checking...</span></div>
+      <div style="margin-bottom: 4px; word-break: break-all;"><strong>2. User ID:</strong> <span
+          id="dbg-user-id">None</span></div>
+      <div style="margin-bottom: 4px; word-break: break-all;"><strong>3. Viewing Wishlist:</strong> <span
+          id="dbg-wishlist">Default</span></div>
+      <div><strong>4. Can Edit:</strong> <span id="dbg-can-edit">False</span></div>
+    </div>
+  </div>
+
   <!-- 2. Database client setup (defines `db`) -->
   <script src="supabase-client.js"></script>
 
