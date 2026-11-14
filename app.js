@@ -80,10 +80,11 @@ function renderOwnerApp() {
       var catRes = await db.from('categories').select('*').order('sort_order', { ascending: true });
       if (!catRes.error && catRes.data && catRes.data.length > 0) {
         state.categories = catRes.data.map(function (c) {
-          return { id: c.id, name: c.name, icon: c.icon || '🎁' };
+          return { id: c.id, name: c.name, icon: c.icon || '🎁', isDefault: !!c.is_default };
         });
+        if (!state.categories.some(function (c) { return c.isDefault })) state.categories[0].isDefault = true;
       } else {
-        state.categories = [{ id: "main", name: "Default", icon: "🎁" }];
+        state.categories = [{ id: "main", name: "Default", icon: "🎁", isDefault: true }];
       }
 
       var itemRes = await db.from('items').select('*').order('sort_order', { ascending: true });
@@ -160,7 +161,7 @@ function renderOwnerApp() {
     var k = "info";
     if (/couldn|can’t|only |not |enter|add a|add at least|valid|too big|isn’t|needs|try|press and hold|give /i.test(m)) k = "warning";
     if (/added|created|saved|updated|deleted|removed|marked|back on|copied|clipboard/i.test(m)) k = "success";
-    if (/storage|went wrong|could not save/i.test(m)) k = "error";
+    if (/^error|storage|went wrong|could not save/i.test(m)) k = "error";
     notify(k, m);
   }
   function safeLink(u) { try { var x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "" } catch (e) { return "" } }
@@ -236,7 +237,7 @@ function renderOwnerApp() {
     $("catName").value = l ? l.name : "";
 
     setCatIcon(l ? l.icon : "🎁"); refreshCounts(); clearErr($("catName"));
-    $("catDelWrap").hidden = !l || l.id === "main" || state.categories.length < 2;
+    $("catDelWrap").hidden = !l || l.isDefault || l.id === "main" || state.categories.length < 2;
     $("catDel").innerHTML = ic("trash") + "<span>Delete category</span>";
     $("catDlg").showModal();
   }
@@ -249,7 +250,7 @@ function renderOwnerApp() {
   $("catIcons").onclick = function (e) { var b = e.target.closest("button"); if (b) setCatIcon(b.dataset.i) };
   $("catDlg").addEventListener("click", function (e) { if (e.target === $("catDlg") || e.target.closest("[data-close]")) $("catDlg").close() });
 
-  $("catSave").onclick = async function () {
+  async function doCatSave() {
     var name = $("catName").value.trim();
     if (!name) { setErr($("catName"), "Enter a category name"); return }
     if (state.categories.some(function (c) { return c !== catEdit && c.name.trim().toLowerCase() === name.toLowerCase() })) { setErr($("catName"), "You already have a category with this name"); return }
@@ -261,10 +262,16 @@ function renderOwnerApp() {
     } else {
       var { data, error } = await db.from('categories').insert([{ wishlist_id: state.wishlistId, name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
       if (error) { toast("Error creating category: " + error.message); return; }
-      var l = { id: data.id, name: data.name, icon: data.icon };
+      var l = { id: data.id, name: data.name, icon: data.icon, isDefault: false };
       state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created");
     }
     render(); showCat(); $("catDlg").close();
+  }
+  var catSaving = false;
+  $("catSave").onclick = async function () {
+    if (catSaving) return;
+    catSaving = true; $("catSave").disabled = true;
+    try { await doCatSave() } finally { catSaving = false; $("catSave").disabled = false }
   };
 
   $("catDel").onclick = function () {
@@ -366,7 +373,7 @@ function renderOwnerApp() {
     show(2);
   }
 
-  async function submit() {
+  async function doSubmit() {
     var name = $("fName").value.trim();
     if (!name) { setErr($("fName"), "Add a gift name to continue"); return }
     var link = fixUrl($("fLink").value);
@@ -473,6 +480,12 @@ function renderOwnerApp() {
   $("fUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); fromLink() } });
   $("manual").onclick = function () { fill({}); $("banner").hidden = true; show(2) };
   $("back").onclick = function () { show(1) };
+  var saving = false;
+  async function submit() {
+    if (saving) return;
+    saving = true; $("save").disabled = true;
+    try { await doSubmit() } finally { saving = false; $("save").disabled = false }
+  }
   $("save").onclick = submit;
   $("s2").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); submit() } });
 
@@ -503,8 +516,10 @@ function renderOwnerApp() {
     var it = state.items.filter(function (i) { return i.id === id })[0];
     if (a === "edit") { closeMenus(); openFlow(it); return }
     if (a === "got") {
+      var prevGot = it.got;
       it.got = !it.got;
-      await db.from('items').update({ got: it.got }).eq('id', id);
+      var { error: gotErr } = await db.from('items').update({ got: it.got }).eq('id', id);
+      if (gotErr) { it.got = prevGot; toast("Error updating gift: " + gotErr.message); render(); return; }
       toast(it.got ? "Marked as got" : "Back on the list");
     }
     render();
