@@ -97,7 +97,8 @@ function renderOwnerApp() {
             link: i.link,
             note: i.note,
             img: i.img,
-            got: i.got || false
+            got: i.got || false,
+            sortOrder: i.sort_order
           };
         });
       }
@@ -114,7 +115,27 @@ function renderOwnerApp() {
     }
   }
 
-  function save() { if (VIEW) return; if (state.sharing) queuePub() }
+  function save() { }
+  var titleT = null;
+  function saveTitle(t) {
+    clearTimeout(titleT);
+    titleT = setTimeout(async function () {
+      if (VIEW || !state.wishlistId) return;
+      var { error } = await db.from('wishlists').update({ title: t }).eq('id', state.wishlistId);
+      if (error) toast("Error saving title: " + error.message);
+    }, 600);
+  }
+  function nextSort(catId) {
+    var m = -1;
+    state.items.forEach(function (i) { if (i.categoryId === catId && (i.sortOrder || 0) > m) m = i.sortOrder || 0 });
+    return m + 1;
+  }
+  async function persistOrder(ids) {
+    var results = await Promise.all(ids.map(function (id, n) {
+      return db.from('items').update({ sort_order: n }).eq('id', id);
+    }));
+    if (results.some(function (r) { return r.error })) toast("Error saving the new order");
+  }
   function money(n) { return "₱" + (Math.round(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] }) }
   document.querySelectorAll("dialog").forEach(function (d) { d.addEventListener("close", function () { var s = d.querySelector(".slot"); if (s) s.innerHTML = ""; clearTimeout(notifyT) }) });
@@ -200,8 +221,9 @@ function renderOwnerApp() {
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
       var ids = [].map.call(ul.children, function (c) { return c.dataset.id });
       var mine = curItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
-      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id) { return byId[id] }));
-      save(); render();
+      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id, n) { byId[id].sortOrder = n; return byId[id] }));
+      render();
+      persistOrder(ids);
     }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
   });
@@ -237,7 +259,7 @@ function renderOwnerApp() {
       if (error) { toast("Error updating category"); return; }
       catEdit.name = name; catEdit.icon = catIcon; toast("Category updated");
     } else {
-      var { data, error } = await db.from('categories').insert([{ name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
+      var { data, error } = await db.from('categories').insert([{ wishlist_id: state.wishlistId, name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
       if (error) { toast("Error creating category: " + error.message); return; }
       var l = { id: data.id, name: data.name, icon: data.icon };
       state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created");
@@ -364,6 +386,7 @@ function renderOwnerApp() {
 
     if (editId) {
       var it = state.items.filter(function (i) { return i.id === editId })[0];
+      if (it.categoryId !== data.category_id) data.sort_order = nextSort(data.category_id);
       var { error: updateError } = await db.from('items').update(data).eq('id', editId);
       if (updateError) {
         toast("Error updating gift: " + updateError.message);
@@ -380,11 +403,13 @@ function renderOwnerApp() {
         price: data.price,
         link: data.link,
         note: data.note,
-        img: data.img
+        img: data.img,
+        sortOrder: data.sort_order !== undefined ? data.sort_order : it.sortOrder
       });
       toast("Gift updated");
     } else {
       data.got = false;
+      data.sort_order = nextSort(data.category_id);
       var { data: savedItem, error } = await db.from('items').insert([data]).select().single();
 
       if (error) {
@@ -400,7 +425,8 @@ function renderOwnerApp() {
         link: savedItem.link,
         note: savedItem.note,
         img: savedItem.img,
-        got: savedItem.got || false
+        got: savedItem.got || false,
+        sortOrder: savedItem.sort_order
       });
       toast("Gift added");
     }
@@ -606,13 +632,14 @@ function renderOwnerApp() {
       $("title").contentEditable = "true";
     }
 
-    if (wlRes.data && wlRes.data.title) {
-      state.title = wlRes.data.title;
+    if (wlRes.data) {
+      state.wishlistId = wlRes.data.id;
+      if (wlRes.data.title) state.title = wlRes.data.title;
     }
 
     await loadFromSupabase();
   }
-  $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
+  $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; saveTitle(t); document.title = t } });
   $("title").addEventListener("blur", function () { if (!$("title").textContent.trim()) { $("title").textContent = state.title; setErr($("title"), "Your wishlist needs a title", true); setTimeout(function () { clearErr($("title")) }, 2600) } });
   $("title").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); e.target.blur() } });
 
