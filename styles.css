@@ -1153,17 +1153,24 @@ select option {
     --kc: var(--k-error)
 }
 
-#login-screen {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100vw;
-  /* height: 100vh; */
-  background-color: #121212; /* Matches your dark theme */
-  z-index: 9999;             /* Sits on top of absolutely everything */
-  display: flex;             /* Makes centering easy */
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+#gate {
+    max-width: 390px;
+    margin: 80px auto;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    text-align: center
+}
+
+#gate h2 {
+    font-family: "Source Serif Pro", Georgia, serif;
+    font-size: 22px;
+    margin: 0 0 8px
+}
+
+#gate p {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 16px
 }

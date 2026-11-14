@@ -1,52 +1,5 @@
 // app.js - Supabase-backed Wishlist App
 
-function renderLoginScreen() {
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-
-  const loginBtn = document.getElementById('login-btn');
-  if (loginBtn && !loginBtn.dataset.listenerAttached) {
-    loginBtn.dataset.listenerAttached = 'true';
-    loginBtn.onclick = async () => {
-      const email = document.getElementById('login-email').value.trim();
-      if (!email) return;
-
-      const status = document.getElementById('login-status');
-      status.textContent = 'Sending magic link...';
-
-      const { error } = await db.auth.signInWithOtp({ email });
-      status.textContent = error ? error.message : 'Check your email for the sign-in link!';
-    };
-  }
-}
-
-// --- Check Auth & Toggle Google Login Button ---
-async function checkAuthAndToggleUI() {
-  var googleBtn = document.getElementById("google-login-btn");
-  if (!googleBtn) return;
-
-  try {
-    var sessionRes = await db.auth.getSession();
-    var session = sessionRes && sessionRes.data && sessionRes.data.session;
-
-    if (session && session.user) {
-      // User is logged in: Hide the Google Sign-In button
-      googleBtn.style.display = "none";
-    } else {
-      // User is logged out: Show the Google Sign-In button
-      googleBtn.style.display = "inline-block";
-    }
-  } catch (e) {
-    console.error("Error checking auth status for UI", e);
-  }
-}
-
-function renderOwnerApp() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  console.log("Loading owner app interface...");
-}
-
 (function () {
   var VIEW = false, SNAP = null, KEY = "wishlist-v3", state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null, delArm = false, itemDelArm = false;
   var $ = function (id) { return document.getElementById(id) };
@@ -538,120 +491,57 @@ function renderOwnerApp() {
     }
   });
 
-  var SHARE_URL = "https://claude.ai/artifact/HWHiHzpmAnVa5BS4XBpyvi", LT = "<", pubT = null;
-  try { SNAP = JSON.parse($("snap").textContent) } catch (e) { SNAP = null }
-  function escTpl(t) { return t.split(LT + "/script").join(LT + "\\/script").split(LT + "!--").join(LT + "\\!--") }
-  function unescTpl(t) { return t.split(LT + "\\/script").join(LT + "/script").split(LT + "\\!--").join(LT + "!--") }
-  function buildHtml(data) { var T = unescTpl($("tpl").textContent), snap = JSON.stringify(data).replace(/</g, "\\u003c"); return T.replace(/@@(SNAP|TPL)@@/g, function (m, k) { return k === "SNAP" ? snap : escTpl(T) }) }
-  function snapData() {
-    if (!state.sharing) return { on: false, updated: Date.now() };
-    var items = state.items.filter(function (i) { return !i.got });
-    var cats = state.categories.filter(function (c) { return items.some(function (i) { return i.categoryId === c.id }) });
-    return { on: true, updated: Date.now(), title: state.title, categories: cats, items: items.map(function (i) { return { id: i.id, categoryId: i.categoryId, name: i.name, price: i.price, link: i.link, note: i.note, img: i.img } }) };
+  /* ---------- sharing: signed-in people open the site link ---------- */
+  function siteUrl() { return (window.location.origin + window.location.pathname).replace(/index\.html$/, "") }
+  function openShare() {
+    $("shBody").innerHTML = '<p class="hint">Send this link to friends and family. They need to sign in with Google to see your list. They can’t change anything, and gifts you’ve marked as got stay hidden.</p><label for="shUrl">Link to your wishlist</label><input id="shUrl" readonly value="' + esc(siteUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div>';
+    if (!$("shDlg").open) $("shDlg").showModal();
   }
-  function viewState() {
-    var s = SNAP || {}, cats = (s.on && s.categories && s.categories.length) ? s.categories : [{ id: "x", name: "Wishlist", icon: "🎁" }];
-    return { title: (s.on && s.title) || "Wishlist", categories: cats, items: s.on ? (s.items || []) : [], cur: cats[0].id };
-  }
-  function queuePub() { clearTimeout(pubT); pubT = setTimeout(tryPub, 5000) }
-  function tryPub() { if (document.querySelector("dialog[open]") || reorder) { pubT = setTimeout(tryPub, 3000); return } doPub(false) }
-  async function doPub(force) {
-    clearTimeout(pubT);
-    var art = null; try { art = window.claude && await claude.use("artifact") } catch (e) { }
-    if (!art) { toast("Sharing isn’t available in this view"); return false }
-    var data = snapData(), sig = JSON.stringify(Object.assign({}, data, { updated: 0 }));
-    if (!force && sig === state.pubSig) return true;
-    var prev = state.pubSig, prevAt = state.pubAt; state.pubSig = sig; state.pubAt = Date.now();
-    try { sessionStorage.setItem("wl-y", String(scrollY)) } catch (e) { }
-    try { await art.publish(buildHtml(data)); return true }
-    catch (err) {
-      state.pubSig = prev; state.pubAt = prevAt;
-      var c = err && err.code;
-      if (c === "conflict") return false;
-      if (c === "rate_limited") { pubT = setTimeout(function () { doPub(false) }, 30000); return false }
-      toast(c === "too_large" ? "Shared view is too big — try removing some photos" : (c === "not_writer" || c === "not_granted") ? "Only the owner can update the shared view" : "Couldn’t update the shared view");
-      return false;
-    }
-  }
-  function renderShare() {
-    var b = $("shBody");
-    if (creating) { b.innerHTML = '<p class="hint">Creating your view-only link…</p>'; return }
-    if (!state.sharing) {
-      b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
-    } else {
-      b.innerHTML = '<p class="hint">Your view-only link updates automatically after every change.' + (state.pubAt ? ' Last updated ' + new Date(state.pubAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + '.' : '') + '</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + SHARE_URL + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><p class="hint" style="margin-top:14px">For people without a Claude account to open it, set this page’s access to “Anyone with the link” in Claude’s Share menu.</p><button class="btn red-o wide" id="shOff" style="margin-top:10px">' + ic("trash") + '<span>Stop sharing</span></button>';
-    }
-  }
-  var creating = false, noticeT = null;
-  async function startShare() {
-    if (state.sharing) { renderShare(); return }
-    state.sharing = true; creating = true; renderShare();
-    try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
-    var ok = await doPub(true);
-    creating = false;
-    if (!ok) { state.sharing = false; try { sessionStorage.removeItem("wl-open"); } catch (x) { } }
-    renderShare();
-  }
-  function openShare() { if (!$("shDlg").open) $("shDlg").showModal(); startShare() }
   $("share").onclick = openShare;
   $("shDlg").addEventListener("click", async function (e) {
     if (e.target === $("shDlg") || e.target.closest("[data-close]")) { $("shDlg").close(); return }
     var b = e.target.closest("button"); if (!b) return;
-    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(SHARE_URL); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
-    if (b.id === "shSend") { navigator.share({ title: state.title, url: SHARE_URL }).catch(function () { }); return }
-    if (b.id === "shOn") { startShare(); return }
-    if (b.id === "shOff") {
-      state.sharing = false;
-      try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
-      var ok = await doPub(true);
-      if (!ok) { state.sharing = !state.sharing; renderShare() }
-    }
+    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(siteUrl()); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
+    if (b.id === "shSend") { navigator.share({ title: state.title, url: siteUrl() }).catch(function () { }) }
   });
 
-  async function boot() {
-    document.body.classList.remove("pending");
+  function showGate(on) {
+    $("gate").hidden = !on;
+    $("app").style.display = on ? "none" : "";
+  }
+  $("signout-btn").onclick = async function () { await db.auth.signOut(); location.reload() };
 
-    // Check actual Supabase session & wishlist ownership
+  async function boot() {
     var sessionRes = await db.auth.getSession();
     var session = sessionRes && sessionRes.data && sessionRes.data.session;
+
+    // Everyone must sign in to see a wishlist
+    if (!session) { showGate(true); return }
+    showGate(false);
+    $("signout-btn").hidden = false;
+
     var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
-
-    // Toggle the button visibility right away on boot
-    await checkAuthAndToggleUI();
-
-    var isOwner = !!(session && session.user && wlRes.data && session.user.id === wlRes.data.owner_id);
+    if (wlRes.error) toast("Error loading wishlist: " + wlRes.error.message);
+    var isOwner = !!(wlRes.data && session.user.id === wlRes.data.owner_id);
 
     if (!isOwner) {
-      // Enforce read-only viewer mode for guests or non-owners
       VIEW = true;
       document.body.classList.add("viewer");
       $("title").contentEditable = "false";
       $("title").removeAttribute("aria-label");
-
       var n = $("viewNote");
-      if (n) {
-        n.hidden = false;
-        n.textContent = "View-only";
-      }
-      var loginBtn = document.getElementById("owner-login-btn");
-      if (loginBtn) {
-        loginBtn.style.display = "inline-block";
-        loginBtn.onclick = function () {
-          renderLoginScreen(); // or trigger your Supabase auth modal/redirect
-        };
-      }
+      if (n) { n.hidden = false; n.textContent = "View-only" }
     } else {
-      // Enable full owner editing
       VIEW = false;
       document.body.classList.remove("viewer");
       $("title").contentEditable = "true";
     }
+    document.body.classList.remove("pending");
 
     if (wlRes.data) {
       state.wishlistId = wlRes.data.id;
       if (wlRes.data.title) state.title = wlRes.data.title;
     }
-
     await loadFromSupabase();
   }
   $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; saveTitle(t); document.title = t } });

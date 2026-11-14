@@ -12,17 +12,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
-<body>
-  <div id="login-screen"
-    style="display: none; max-width: 390px; margin: 80px auto; padding: 24px; background: #1d1d1d; border: 1px solid #333; border-radius: 16px;">
-    <h2 style="font-family: 'Source Serif Pro', serif; font-size: 22px; margin: 0 0 8px;">Sign in to your wishlist</h2>
-    <p style="color: #9a9a9a; font-size: 14px; margin: 0 0 16px;">Enter your email to get a sign-in link.</p>
-    <input id="login-email" type="email" placeholder="you@example.com"
-      style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid #8c8c8c; background: #121212; color: #f2f2f2; margin-bottom: 12px;" />
-    <button id="login-btn"
-      style="width: 100%; padding: 12px; border-radius: 12px; border: none; background: #f2f2f2; color: #111; font-weight: 700; cursor: pointer;">Send
-      magic link</button>
-    <p id="login-status" style="color: #7ee2a0; font-size: 13px; margin: 12px 0 0;"></p>
+<body class="pending">
+  <div id="gate" hidden>
+    <h2>Sign in to view this wishlist</h2>
+    <p>Please sign in with your Google account to continue.</p>
+    <button type="button" class="btn primary wide" id="google-login-btn">Sign in with Google</button>
   </div>
   <div id="app">
 
@@ -32,10 +26,7 @@
         <button class="btn" id="share"><i data-ic="share"></i><span>Share list</span></button>
       </div>
       <p id="viewNote" hidden></p>
-      <button id="google-login-btn"
-        style="background: #4285F4; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Sign in with Google
-      </button>
+      <p class="sub"><button type="button" class="more" id="signout-btn" hidden>Sign out</button></p>
       <div class="catbar">
         <div class="cats" id="cats" role="group" aria-label="Categories"></div>
         <button class="chip new" id="addCat" aria-label="Add category" title="Add category"><i data-ic="plus"
