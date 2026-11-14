@@ -147,7 +147,7 @@
   </div>
 
   <!-- Debug Floating Panel -->
-  <div id="debug-container" style="position: fixed; bottom: 16px; left: 16px; z-index: 9999; font-family: sans-serif;">
+  <div id="debug-container" hidden style="position: fixed; bottom: 16px; left: 16px; z-index: 9999; font-family: sans-serif;">
     <button id="debug-toggle-btn"
       style="background: #111; color: #fff; border: none; padding: 8px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
       🐞 Debug
@@ -169,14 +169,10 @@
     </div>
   </div>
 
-  <!-- 2. Database client setup (defines `db`) -->
+  <!-- Database client (defines `db`) -->
   <script src="supabase-client.js"></script>
 
-  <!-- 3. Actions & Migration functions (defines saveGift, loadOwnerWishlist, etc.) -->
-  <script src="supabase-actions.js"></script>
-  <script src="supabase-migration.js"></script>
-
-  <!-- 5. Your existing UI/app logic -->
+  <!-- App logic -->
   <script src="app.js"></script>
 </body>
 

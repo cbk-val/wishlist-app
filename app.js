@@ -1,7 +1,7 @@
 // app.js - Supabase-backed Wishlist App
 
 (function () {
-  var VIEW = false, SNAP = null, KEY = "wishlist-v3", state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null, delArm = false, itemDelArm = false;
+  var VIEW = false, state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null;
   var $ = function (id) { return document.getElementById(id) };
   var IC = {
     plus: "M12 5v14M5 12h14", check: "M5 12.5l4.5 4.5L19 7.5", x: "M6 6l12 12M18 6L6 18", back: "M15 5l-7 7 7 7",
@@ -26,7 +26,7 @@
   function ic(n, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + IC[n] + '"/></svg>' }
   [].forEach.call(document.querySelectorAll("i[data-ic]"), function (el) { el.outerHTML = ic(el.dataset.ic, +el.dataset.s || 18) });
 
-  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false };
+  state = { title: "My wishlist", categories: [], items: [], cur: null };
 
   async function loadFromSupabase() {
     try {
@@ -69,7 +69,6 @@
     }
   }
 
-  function save() { }
   var titleT = null;
   function saveTitle(t) {
     clearTimeout(titleT);
@@ -119,7 +118,6 @@
   }
   function safeLink(u) { try { var x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "" } catch (e) { return "" } }
   function fixUrl(u) { u = u.trim(); if (u && !/^https?:\/\//i.test(u)) u = "https://" + u; return u }
-  function curCategory() { return state.categories.filter(function (l) { return l.id === state.cur })[0] }
   function curItems() { return state.items.filter(function (i) { return i.categoryId === state.cur }) }
 
   /* ---------- render ---------- */
@@ -185,7 +183,7 @@
   /* ---------- cats ---------- */
   function openCatDlg(l) {
     if (VIEW) return;
-    catEdit = l || null; delArm = false;
+    catEdit = l || null;
     $("catTitle").textContent = l ? "Edit category" : "New category";
     $("catName").value = l ? l.name : "";
 
@@ -266,7 +264,6 @@
     var ed = e.target.closest("[data-edit]");
     if (ed) { openCatDlg(state.categories.filter(function (c) { return c.id === ed.dataset.edit })[0]); return }
     var b = e.target.closest("[data-c]"); if (!b) return;
-    if (b.dataset.c === "__new") { openCatDlg(); return }
     state.cur = b.dataset.c; reorder = false; render(); showCat();
   };
   $("reorderDone").onclick = function () { reorder = false; render() };
@@ -312,7 +309,7 @@
     $("fUrl").value = ""; clearErr($("fUrl")); fill(item || {}); $("banner").hidden = true;
     $("dTitle").textContent = item ? "Edit gift" : "Check the details";
     $("step2").hidden = !!item; $("back").hidden = !!item;
-    $("delWrap").hidden = !item; itemDelArm = false; $("delItem").innerHTML = ic("trash") + "<span>Delete gift</span>";
+    $("delWrap").hidden = !item; $("delItem").innerHTML = ic("trash") + "<span>Delete gift</span>";
     show(item ? 2 : 1); $("dlg").showModal();
   }
   function fromLink() {
@@ -462,7 +459,6 @@
     var b = e.target.closest("[data-a]");
     if (!b) { closeMenus(); return }
     var a = b.dataset.a;
-    if (a === "new") { openFlow(); return }
     if (a === "menu") { toggleMenu(b); return }
     if (a === "more") { var n = b.previousElementSibling, o = n.classList.toggle("open"); b.textContent = o ? "Show less" : "Show more"; b.setAttribute("aria-expanded", String(o)); return }
     var id = b.closest("[data-id]").dataset.id;
@@ -482,14 +478,7 @@
   function toggleMenu(btn) { var li = btn.closest(".item"), m = li.querySelector(".menu"), was = !m.hidden; closeMenus(); if (!was) { m.hidden = false; li.classList.add("menu-open"); btn.setAttribute("aria-expanded", "true"); m.querySelector("button").focus() } }
   document.addEventListener("click", function (e) { if (!e.target.closest(".item")) closeMenus() });
 
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-      closeMenus();
-      document.querySelectorAll("dialog[open]").forEach(function (dlg) {
-        dlg.close();
-      });
-    }
-  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenus() });
 
   /* ---------- sharing: signed-in people open the site link ---------- */
   function siteUrl() { return (window.location.origin + window.location.pathname).replace(/index\.html$/, "") }
@@ -598,10 +587,10 @@ async function updateDebugPanel() {
 
       wishlistEl.textContent = title + " (" + ownerDisplay + ")";
     } else {
-      wishlistEl.textContent = (state && state.title) ? state.title : "My wishlist (No row found)";
+      wishlistEl.textContent = "No wishlist row found";
     }
   } catch (err) {
-    wishlistEl.textContent = (state && state.title) ? state.title : "Default";
+    wishlistEl.textContent = "Error loading wishlist";
   }
 
   // 4. Check real edit permission (Logged in AND user ID matches owner_id)
@@ -611,67 +600,23 @@ async function updateDebugPanel() {
   canEditEl.style.color = isEditable ? "#4ade80" : "#f87171";
 }
 
-// Wire up toggle behavior for the debug button
-document.addEventListener("DOMContentLoaded", function () {
-  var btn = document.getElementById("debug-toggle-btn");
-  var panel = document.getElementById("debug-panel");
-  var closeBtn = document.getElementById("debug-close");
-
-  if (btn && panel) {
-    btn.onclick = function () {
-      var isVisible = panel.style.display === "block";
-      panel.style.display = isVisible ? "none" : "block";
-      if (!isVisible) {
-        updateDebugPanel(); // Refresh stats whenever opened
-      }
+// Debug panel is hidden unless the URL has ?debug=1
+if (new URLSearchParams(window.location.search).get("debug") === "1") {
+  var dbgBox = document.getElementById("debug-container");
+  var dbgBtn = document.getElementById("debug-toggle-btn");
+  var dbgPanel = document.getElementById("debug-panel");
+  var dbgClose = document.getElementById("debug-close");
+  if (dbgBox && dbgBtn && dbgPanel) {
+    dbgBox.hidden = false;
+    dbgBtn.onclick = function () {
+      var show = dbgPanel.style.display !== "block";
+      dbgPanel.style.display = show ? "block" : "none";
+      if (show) updateDebugPanel();
     };
+    if (dbgClose) dbgClose.onclick = function () { dbgPanel.style.display = "none" };
+    setInterval(function () { if (dbgPanel.style.display === "block") updateDebugPanel() }, 3000);
   }
-
-  if (closeBtn && panel) {
-    closeBtn.onclick = function () {
-      panel.style.display = "none";
-    };
-  }
-});
-
-// Periodically update debug info if panel is open
-setInterval(function () {
-  var panel = document.getElementById("debug-panel");
-  if (panel && panel.style.display === "block") {
-    updateDebugPanel();
-  }
-}, 3000);
-
-// Wire up toggle behavior for the debug button
-document.addEventListener("DOMContentLoaded", function () {
-  var btn = document.getElementById("debug-toggle-btn");
-  var panel = document.getElementById("debug-panel");
-  var closeBtn = document.getElementById("debug-close");
-
-  if (btn && panel) {
-    btn.onclick = function () {
-      var isVisible = panel.style.display === "block";
-      panel.style.display = isVisible ? "none" : "block";
-      if (!isVisible) {
-        updateDebugPanel(); // Refresh stats whenever opened
-      }
-    };
-  }
-
-  if (closeBtn && panel) {
-    closeBtn.onclick = function () {
-      panel.style.display = "none";
-    };
-  }
-});
-
-// Periodically update debug info if panel is open
-setInterval(function () {
-  var panel = document.getElementById("debug-panel");
-  if (panel && panel.style.display === "block") {
-    updateDebugPanel();
-  }
-}, 3000);
+}
 
 async function signInWithGoogle() {
   var redirectUrl = (window.location.origin + window.location.pathname)
