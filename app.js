@@ -1,10 +1,52 @@
 // app.js - Supabase-backed Wishlist App
 
+function renderLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+
+  const loginBtn = document.getElementById('login-btn');
+  if (loginBtn && !loginBtn.dataset.listenerAttached) {
+    loginBtn.dataset.listenerAttached = 'true';
+    loginBtn.onclick = async () => {
+      const email = document.getElementById('login-email').value.trim();
+      if (!email) return;
+
+      const status = document.getElementById('login-status');
+      status.textContent = 'Sending magic link...';
+
+      const { error } = await db.auth.signInWithOtp({ email });
+      status.textContent = error ? error.message : 'Check your email for the sign-in link!';
+    };
+  }
+}
+
+// --- Check Auth & Toggle Google Login Button ---
+async function checkAuthAndToggleUI() {
+  var bar = document.getElementById("signin-bar");
+  if (!bar) return;
+
+  try {
+    var sessionRes = await db.auth.getSession();
+    var session = sessionRes && sessionRes.data && sessionRes.data.session;
+    // Signed in: hide the sign-in drawer. Signed out: show it.
+    bar.hidden = !!(session && session.user);
+  } catch (e) {
+    console.error("Error checking auth status for UI", e);
+    bar.hidden = false;
+  }
+}
+
+function renderOwnerApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  console.log("Loading owner app interface...");
+}
+
 (function () {
-  var VIEW = false, state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null;
+  var VIEW = false, SNAP = null, KEY = "wishlist-v3", state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null, delArm = false, itemDelArm = false;
   var $ = function (id) { return document.getElementById(id) };
   var IC = {
-    plus: "M12 5v14M5 12h14", check: "M5 12.5l4.5 4.5L19 7.5", x: "M6 6l12 12M18 6L6 18", back: "M15 5l-7 7 7 7",
+    plus: "M12 5v14M5 12h14", user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", menu: "M4 7h16M4 12h16M4 17h16", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", check: "M5 12.5l4.5 4.5L19 7.5", x: "M6 6l12 12M18 6L6 18", back: "M15 5l-7 7 7 7",
     share: "M12 15V3M7.5 7.5L12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7",
     link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
     pencil: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
@@ -26,18 +68,17 @@
   function ic(n, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + IC[n] + '"/></svg>' }
   [].forEach.call(document.querySelectorAll("i[data-ic]"), function (el) { el.outerHTML = ic(el.dataset.ic, +el.dataset.s || 18) });
 
-  state = { title: "My wishlist", categories: [], items: [], cur: null };
+  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false };
 
   async function loadFromSupabase() {
     try {
       var catRes = await db.from('categories').select('*').order('sort_order', { ascending: true });
       if (!catRes.error && catRes.data && catRes.data.length > 0) {
         state.categories = catRes.data.map(function (c) {
-          return { id: c.id, name: c.name, icon: c.icon || '🎁', isDefault: !!c.is_default };
+          return { id: c.id, name: c.name, icon: c.icon || '🎁' };
         });
-        if (!state.categories.some(function (c) { return c.isDefault })) state.categories[0].isDefault = true;
       } else {
-        state.categories = [{ id: "main", name: "Default", icon: "🎁", isDefault: true }];
+        state.categories = [{ id: "main", name: "Default", icon: "🎁" }];
       }
 
       var itemRes = await db.from('items').select('*').order('sort_order', { ascending: true });
@@ -51,8 +92,7 @@
             link: i.link,
             note: i.note,
             img: i.img,
-            got: i.got || false,
-            sortOrder: i.sort_order
+            got: i.got || false
           };
         });
       }
@@ -69,26 +109,7 @@
     }
   }
 
-  var titleT = null;
-  function saveTitle(t) {
-    clearTimeout(titleT);
-    titleT = setTimeout(async function () {
-      if (VIEW || !state.wishlistId) return;
-      var { error } = await db.from('wishlists').update({ title: t }).eq('id', state.wishlistId);
-      if (error) toast("Error saving title: " + error.message);
-    }, 600);
-  }
-  function nextSort(catId) {
-    var m = -1;
-    state.items.forEach(function (i) { if (i.categoryId === catId && (i.sortOrder || 0) > m) m = i.sortOrder || 0 });
-    return m + 1;
-  }
-  async function persistOrder(ids) {
-    var results = await Promise.all(ids.map(function (id, n) {
-      return db.from('items').update({ sort_order: n }).eq('id', id);
-    }));
-    if (results.some(function (r) { return r.error })) toast("Error saving the new order");
-  }
+  function save() { if (VIEW) return; if (state.sharing) queuePub() }
   function money(n) { return "₱" + (Math.round(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] }) }
   document.querySelectorAll("dialog").forEach(function (d) { d.addEventListener("close", function () { var s = d.querySelector(".slot"); if (s) s.innerHTML = ""; clearTimeout(notifyT) }) });
@@ -113,11 +134,12 @@
     var k = "info";
     if (/couldn|can’t|only |not |enter|add a|add at least|valid|too big|isn’t|needs|try|press and hold|give /i.test(m)) k = "warning";
     if (/added|created|saved|updated|deleted|removed|marked|back on|copied|clipboard/i.test(m)) k = "success";
-    if (/^error|storage|went wrong|could not save/i.test(m)) k = "error";
+    if (/storage|went wrong|could not save/i.test(m)) k = "error";
     notify(k, m);
   }
   function safeLink(u) { try { var x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "" } catch (e) { return "" } }
   function fixUrl(u) { u = u.trim(); if (u && !/^https?:\/\//i.test(u)) u = "https://" + u; return u }
+  function curCategory() { return state.categories.filter(function (l) { return l.id === state.cur })[0] }
   function curItems() { return state.items.filter(function (i) { return i.categoryId === state.cur }) }
 
   /* ---------- render ---------- */
@@ -173,9 +195,8 @@
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
       var ids = [].map.call(ul.children, function (c) { return c.dataset.id });
       var mine = curItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
-      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id, n) { byId[id].sortOrder = n; return byId[id] }));
-      render();
-      persistOrder(ids);
+      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id) { return byId[id] }));
+      save(); render();
     }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
   });
@@ -183,12 +204,12 @@
   /* ---------- cats ---------- */
   function openCatDlg(l) {
     if (VIEW) return;
-    catEdit = l || null;
+    catEdit = l || null; delArm = false;
     $("catTitle").textContent = l ? "Edit category" : "New category";
     $("catName").value = l ? l.name : "";
 
     setCatIcon(l ? l.icon : "🎁"); refreshCounts(); clearErr($("catName"));
-    $("catDelWrap").hidden = !l || l.isDefault || l.id === "main" || state.categories.length < 2;
+    $("catDelWrap").hidden = !l || l.id === "main" || state.categories.length < 2;
     $("catDel").innerHTML = ic("trash") + "<span>Delete category</span>";
     $("catDlg").showModal();
   }
@@ -201,7 +222,7 @@
   $("catIcons").onclick = function (e) { var b = e.target.closest("button"); if (b) setCatIcon(b.dataset.i) };
   $("catDlg").addEventListener("click", function (e) { if (e.target === $("catDlg") || e.target.closest("[data-close]")) $("catDlg").close() });
 
-  async function doCatSave() {
+  $("catSave").onclick = async function () {
     var name = $("catName").value.trim();
     if (!name) { setErr($("catName"), "Enter a category name"); return }
     if (state.categories.some(function (c) { return c !== catEdit && c.name.trim().toLowerCase() === name.toLowerCase() })) { setErr($("catName"), "You already have a category with this name"); return }
@@ -211,18 +232,12 @@
       if (error) { toast("Error updating category"); return; }
       catEdit.name = name; catEdit.icon = catIcon; toast("Category updated");
     } else {
-      var { data, error } = await db.from('categories').insert([{ wishlist_id: state.wishlistId, name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
+      var { data, error } = await db.from('categories').insert([{ name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
       if (error) { toast("Error creating category: " + error.message); return; }
-      var l = { id: data.id, name: data.name, icon: data.icon, isDefault: false };
+      var l = { id: data.id, name: data.name, icon: data.icon };
       state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created");
     }
     render(); showCat(); $("catDlg").close();
-  }
-  var catSaving = false;
-  $("catSave").onclick = async function () {
-    if (catSaving) return;
-    catSaving = true; $("catSave").disabled = true;
-    try { await doCatSave() } finally { catSaving = false; $("catSave").disabled = false }
   };
 
   $("catDel").onclick = function () {
@@ -264,6 +279,7 @@
     var ed = e.target.closest("[data-edit]");
     if (ed) { openCatDlg(state.categories.filter(function (c) { return c.id === ed.dataset.edit })[0]); return }
     var b = e.target.closest("[data-c]"); if (!b) return;
+    if (b.dataset.c === "__new") { openCatDlg(); return }
     state.cur = b.dataset.c; reorder = false; render(); showCat();
   };
   $("reorderDone").onclick = function () { reorder = false; render() };
@@ -309,7 +325,7 @@
     $("fUrl").value = ""; clearErr($("fUrl")); fill(item || {}); $("banner").hidden = true;
     $("dTitle").textContent = item ? "Edit gift" : "Check the details";
     $("step2").hidden = !!item; $("back").hidden = !!item;
-    $("delWrap").hidden = !item; $("delItem").innerHTML = ic("trash") + "<span>Delete gift</span>";
+    $("delWrap").hidden = !item; itemDelArm = false; $("delItem").innerHTML = ic("trash") + "<span>Delete gift</span>";
     show(item ? 2 : 1); $("dlg").showModal();
   }
   function fromLink() {
@@ -323,7 +339,7 @@
     show(2);
   }
 
-  async function doSubmit() {
+  async function submit() {
     var name = $("fName").value.trim();
     if (!name) { setErr($("fName"), "Add a gift name to continue"); return }
     var link = fixUrl($("fLink").value);
@@ -343,7 +359,6 @@
 
     if (editId) {
       var it = state.items.filter(function (i) { return i.id === editId })[0];
-      if (it.categoryId !== data.category_id) data.sort_order = nextSort(data.category_id);
       var { error: updateError } = await db.from('items').update(data).eq('id', editId);
       if (updateError) {
         toast("Error updating gift: " + updateError.message);
@@ -360,13 +375,11 @@
         price: data.price,
         link: data.link,
         note: data.note,
-        img: data.img,
-        sortOrder: data.sort_order !== undefined ? data.sort_order : it.sortOrder
+        img: data.img
       });
       toast("Gift updated");
     } else {
       data.got = false;
-      data.sort_order = nextSort(data.category_id);
       var { data: savedItem, error } = await db.from('items').insert([data]).select().single();
 
       if (error) {
@@ -382,8 +395,7 @@
         link: savedItem.link,
         note: savedItem.note,
         img: savedItem.img,
-        got: savedItem.got || false,
-        sortOrder: savedItem.sort_order
+        got: savedItem.got || false
       });
       toast("Gift added");
     }
@@ -430,12 +442,6 @@
   $("fUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); fromLink() } });
   $("manual").onclick = function () { fill({}); $("banner").hidden = true; show(2) };
   $("back").onclick = function () { show(1) };
-  var saving = false;
-  async function submit() {
-    if (saving) return;
-    saving = true; $("save").disabled = true;
-    try { await doSubmit() } finally { saving = false; $("save").disabled = false }
-  }
   $("save").onclick = submit;
   $("s2").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); submit() } });
 
@@ -459,16 +465,15 @@
     var b = e.target.closest("[data-a]");
     if (!b) { closeMenus(); return }
     var a = b.dataset.a;
+    if (a === "new") { openFlow(); return }
     if (a === "menu") { toggleMenu(b); return }
     if (a === "more") { var n = b.previousElementSibling, o = n.classList.toggle("open"); b.textContent = o ? "Show less" : "Show more"; b.setAttribute("aria-expanded", String(o)); return }
     var id = b.closest("[data-id]").dataset.id;
     var it = state.items.filter(function (i) { return i.id === id })[0];
     if (a === "edit") { closeMenus(); openFlow(it); return }
     if (a === "got") {
-      var prevGot = it.got;
       it.got = !it.got;
-      var { error: gotErr } = await db.from('items').update({ got: it.got }).eq('id', id);
-      if (gotErr) { it.got = prevGot; toast("Error updating gift: " + gotErr.message); render(); return; }
+      await db.from('items').update({ got: it.got }).eq('id', id);
       toast(it.got ? "Marked as got" : "Back on the list");
     }
     render();
@@ -478,62 +483,167 @@
   function toggleMenu(btn) { var li = btn.closest(".item"), m = li.querySelector(".menu"), was = !m.hidden; closeMenus(); if (!was) { m.hidden = false; li.classList.add("menu-open"); btn.setAttribute("aria-expanded", "true"); m.querySelector("button").focus() } }
   document.addEventListener("click", function (e) { if (!e.target.closest(".item")) closeMenus() });
 
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenus() });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      closeMenus();
+      document.querySelectorAll("dialog[open]").forEach(function (dlg) {
+        dlg.close();
+      });
+    }
+  });
 
-  /* ---------- sharing: signed-in people open the site link ---------- */
-  function siteUrl() { return (window.location.origin + window.location.pathname).replace(/index\.html$/, "") }
-  function openShare() {
-    $("shBody").innerHTML = '<p class="hint">Send this link to friends and family. They need to sign in with Google to see your list. They can’t change anything, and gifts you’ve marked as got stay hidden.</p><label for="shUrl">Link to your wishlist</label><input id="shUrl" readonly value="' + esc(siteUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div>';
-    if (!$("shDlg").open) $("shDlg").showModal();
+  var SHARE_URL = "https://claude.ai/artifact/HWHiHzpmAnVa5BS4XBpyvi", LT = "<", pubT = null;
+  try { SNAP = JSON.parse($("snap").textContent) } catch (e) { SNAP = null }
+  function escTpl(t) { return t.split(LT + "/script").join(LT + "\\/script").split(LT + "!--").join(LT + "\\!--") }
+  function unescTpl(t) { return t.split(LT + "\\/script").join(LT + "/script").split(LT + "\\!--").join(LT + "!--") }
+  function buildHtml(data) { var T = unescTpl($("tpl").textContent), snap = JSON.stringify(data).replace(/</g, "\\u003c"); return T.replace(/@@(SNAP|TPL)@@/g, function (m, k) { return k === "SNAP" ? snap : escTpl(T) }) }
+  function snapData() {
+    if (!state.sharing) return { on: false, updated: Date.now() };
+    var items = state.items.filter(function (i) { return !i.got });
+    var cats = state.categories.filter(function (c) { return items.some(function (i) { return i.categoryId === c.id }) });
+    return { on: true, updated: Date.now(), title: state.title, categories: cats, items: items.map(function (i) { return { id: i.id, categoryId: i.categoryId, name: i.name, price: i.price, link: i.link, note: i.note, img: i.img } }) };
   }
+  function viewState() {
+    var s = SNAP || {}, cats = (s.on && s.categories && s.categories.length) ? s.categories : [{ id: "x", name: "Wishlist", icon: "🎁" }];
+    return { title: (s.on && s.title) || "Wishlist", categories: cats, items: s.on ? (s.items || []) : [], cur: cats[0].id };
+  }
+  function queuePub() { clearTimeout(pubT); pubT = setTimeout(tryPub, 5000) }
+  function tryPub() { if (document.querySelector("dialog[open]") || reorder) { pubT = setTimeout(tryPub, 3000); return } doPub(false) }
+  async function doPub(force) {
+    clearTimeout(pubT);
+    var art = null; try { art = window.claude && await claude.use("artifact") } catch (e) { }
+    if (!art) { toast("Sharing isn’t available in this view"); return false }
+    var data = snapData(), sig = JSON.stringify(Object.assign({}, data, { updated: 0 }));
+    if (!force && sig === state.pubSig) return true;
+    var prev = state.pubSig, prevAt = state.pubAt; state.pubSig = sig; state.pubAt = Date.now();
+    try { sessionStorage.setItem("wl-y", String(scrollY)) } catch (e) { }
+    try { await art.publish(buildHtml(data)); return true }
+    catch (err) {
+      state.pubSig = prev; state.pubAt = prevAt;
+      var c = err && err.code;
+      if (c === "conflict") return false;
+      if (c === "rate_limited") { pubT = setTimeout(function () { doPub(false) }, 30000); return false }
+      toast(c === "too_large" ? "Shared view is too big — try removing some photos" : (c === "not_writer" || c === "not_granted") ? "Only the owner can update the shared view" : "Couldn’t update the shared view");
+      return false;
+    }
+  }
+  function renderShare() {
+    var b = $("shBody");
+    if (creating) { b.innerHTML = '<p class="hint">Creating your view-only link…</p>'; return }
+    if (!state.sharing) {
+      b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
+    } else {
+      b.innerHTML = '<p class="hint">Your view-only link updates automatically after every change.' + (state.pubAt ? ' Last updated ' + new Date(state.pubAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + '.' : '') + '</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + SHARE_URL + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><p class="hint" style="margin-top:14px">For people without a Claude account to open it, set this page’s access to “Anyone with the link” in Claude’s Share menu.</p><button class="btn red-o wide" id="shOff" style="margin-top:10px">' + ic("trash") + '<span>Stop sharing</span></button>';
+    }
+  }
+  var creating = false, noticeT = null;
+  async function startShare() {
+    if (state.sharing) { renderShare(); return }
+    state.sharing = true; creating = true; renderShare();
+    try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
+    var ok = await doPub(true);
+    creating = false;
+    if (!ok) { state.sharing = false; try { sessionStorage.removeItem("wl-open"); } catch (x) { } }
+    renderShare();
+  }
+  function openShare() { if (!$("shDlg").open) $("shDlg").showModal(); startShare() }
   $("share").onclick = openShare;
   $("shDlg").addEventListener("click", async function (e) {
     if (e.target === $("shDlg") || e.target.closest("[data-close]")) { $("shDlg").close(); return }
     var b = e.target.closest("button"); if (!b) return;
-    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(siteUrl()); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
-    if (b.id === "shSend") { navigator.share({ title: state.title, url: siteUrl() }).catch(function () { }) }
+    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(SHARE_URL); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
+    if (b.id === "shSend") { navigator.share({ title: state.title, url: SHARE_URL }).catch(function () { }); return }
+    if (b.id === "shOn") { startShare(); return }
+    if (b.id === "shOff") {
+      state.sharing = false;
+      try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
+      var ok = await doPub(true);
+      if (!ok) { state.sharing = !state.sharing; renderShare() }
+    }
   });
 
-  function showGate(on) {
-    $("gate").hidden = !on;
-    $("app").style.display = on ? "none" : "";
+  /* ---------- account menu (signed-in only) ---------- */
+  function setAvatar(el, url, name) {
+    el.textContent = (name || "?").trim().charAt(0).toUpperCase();
+    if (!url) return;
+    var im = new Image();
+    im.alt = ""; im.referrerPolicy = "no-referrer";
+    im.onload = function () { el.textContent = ""; el.appendChild(im) };
+    im.src = url;
   }
-  $("signout-btn").onclick = async function () { await db.auth.signOut(); location.reload() };
+  function setupAccountMenu(session) {
+    var nb = $("navBtn");
+    if (!session || !session.user) { nb.hidden = true; return }
+    var u = session.user, m = u.user_metadata || {};
+    var name = m.full_name || m.name || (u.email || "").split("@")[0] || "Signed in";
+    $("navName").textContent = name;
+    $("navEmail").textContent = u.email || "";
+    setAvatar($("navAvatar"), m.avatar_url || m.picture, name);
+    nb.hidden = false;
+  }
+  function closeNav() {
+    var d = $("navDlg");
+    if (!d.open || d.classList.contains("closing")) return;
+    var done = function () { d.classList.remove("closing"); if (d.open) d.close() };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { done(); return }
+    d.classList.add("closing"); setTimeout(done, 200);
+  }
+  $("navBtn").onclick = function () { closeMenus(); $("navDlg").showModal() };
+  $("navDlg").addEventListener("click", function (e) { if (e.target === $("navDlg") || e.target.closest("[data-close]")) closeNav() });
+  $("signOut").onclick = async function () {
+    var b = this; b.disabled = true;
+    var r = await db.auth.signOut({ scope: "local" });
+    if (r && r.error) { b.disabled = false; toast("Couldn\u2019t sign out. Try again."); return }
+    location.reload();
+  };
 
   async function boot() {
+    document.body.classList.remove("pending");
+
+    // Check actual Supabase session & wishlist ownership
     var sessionRes = await db.auth.getSession();
     var session = sessionRes && sessionRes.data && sessionRes.data.session;
-
-    // Everyone must sign in to see a wishlist
-    if (!session) { showGate(true); return }
-    showGate(false);
-    $("signout-btn").hidden = false;
-
+    setupAccountMenu(session);
     var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
-    if (wlRes.error) toast("Error loading wishlist: " + wlRes.error.message);
-    var isOwner = !!(wlRes.data && session.user.id === wlRes.data.owner_id);
+
+    // Toggle the button visibility right away on boot
+    await checkAuthAndToggleUI();
+
+    var isOwner = !!(session && session.user && wlRes.data && session.user.id === wlRes.data.owner_id);
 
     if (!isOwner) {
+      // Enforce read-only viewer mode for guests or non-owners
       VIEW = true;
       document.body.classList.add("viewer");
       $("title").contentEditable = "false";
       $("title").removeAttribute("aria-label");
+
       var n = $("viewNote");
-      if (n) { n.hidden = false; n.textContent = "View-only" }
+      if (n) {
+        n.hidden = false;
+        n.textContent = "View-only";
+      }
+      var loginBtn = document.getElementById("owner-login-btn");
+      if (loginBtn) {
+        loginBtn.style.display = "inline-block";
+        loginBtn.onclick = function () {
+          renderLoginScreen(); // or trigger your Supabase auth modal/redirect
+        };
+      }
     } else {
+      // Enable full owner editing
       VIEW = false;
       document.body.classList.remove("viewer");
       $("title").contentEditable = "true";
     }
-    document.body.classList.remove("pending");
 
-    if (wlRes.data) {
-      state.wishlistId = wlRes.data.id;
-      if (wlRes.data.title) state.title = wlRes.data.title;
+    if (wlRes.data && wlRes.data.title) {
+      state.title = wlRes.data.title;
     }
+
     await loadFromSupabase();
   }
-  $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; saveTitle(t); document.title = t } });
+  $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
   $("title").addEventListener("blur", function () { if (!$("title").textContent.trim()) { $("title").textContent = state.title; setErr($("title"), "Your wishlist needs a title", true); setTimeout(function () { clearErr($("title")) }, 2600) } });
   $("title").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); e.target.blur() } });
 
@@ -587,10 +697,10 @@ async function updateDebugPanel() {
 
       wishlistEl.textContent = title + " (" + ownerDisplay + ")";
     } else {
-      wishlistEl.textContent = "No wishlist row found";
+      wishlistEl.textContent = (state && state.title) ? state.title : "My wishlist (No row found)";
     }
   } catch (err) {
-    wishlistEl.textContent = "Error loading wishlist";
+    wishlistEl.textContent = (state && state.title) ? state.title : "Default";
   }
 
   // 4. Check real edit permission (Logged in AND user ID matches owner_id)
@@ -600,23 +710,67 @@ async function updateDebugPanel() {
   canEditEl.style.color = isEditable ? "#4ade80" : "#f87171";
 }
 
-// Debug panel is hidden unless the URL has ?debug=1
-if (new URLSearchParams(window.location.search).get("debug") === "1") {
-  var dbgBox = document.getElementById("debug-container");
-  var dbgBtn = document.getElementById("debug-toggle-btn");
-  var dbgPanel = document.getElementById("debug-panel");
-  var dbgClose = document.getElementById("debug-close");
-  if (dbgBox && dbgBtn && dbgPanel) {
-    dbgBox.hidden = false;
-    dbgBtn.onclick = function () {
-      var show = dbgPanel.style.display !== "block";
-      dbgPanel.style.display = show ? "block" : "none";
-      if (show) updateDebugPanel();
+// Wire up toggle behavior for the debug button
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("debug-toggle-btn");
+  var panel = document.getElementById("debug-panel");
+  var closeBtn = document.getElementById("debug-close");
+
+  if (btn && panel) {
+    btn.onclick = function () {
+      var isVisible = panel.style.display === "block";
+      panel.style.display = isVisible ? "none" : "block";
+      if (!isVisible) {
+        updateDebugPanel(); // Refresh stats whenever opened
+      }
     };
-    if (dbgClose) dbgClose.onclick = function () { dbgPanel.style.display = "none" };
-    setInterval(function () { if (dbgPanel.style.display === "block") updateDebugPanel() }, 3000);
   }
-}
+
+  if (closeBtn && panel) {
+    closeBtn.onclick = function () {
+      panel.style.display = "none";
+    };
+  }
+});
+
+// Periodically update debug info if panel is open
+setInterval(function () {
+  var panel = document.getElementById("debug-panel");
+  if (panel && panel.style.display === "block") {
+    updateDebugPanel();
+  }
+}, 3000);
+
+// Wire up toggle behavior for the debug button
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("debug-toggle-btn");
+  var panel = document.getElementById("debug-panel");
+  var closeBtn = document.getElementById("debug-close");
+
+  if (btn && panel) {
+    btn.onclick = function () {
+      var isVisible = panel.style.display === "block";
+      panel.style.display = isVisible ? "none" : "block";
+      if (!isVisible) {
+        updateDebugPanel(); // Refresh stats whenever opened
+      }
+    };
+  }
+
+  if (closeBtn && panel) {
+    closeBtn.onclick = function () {
+      panel.style.display = "none";
+    };
+  }
+});
+
+// Periodically update debug info if panel is open
+setInterval(function () {
+  var panel = document.getElementById("debug-panel");
+  if (panel && panel.style.display === "block") {
+    updateDebugPanel();
+  }
+}, 3000);
 
 async function signInWithGoogle() {
   var redirectUrl = (window.location.origin + window.location.pathname)

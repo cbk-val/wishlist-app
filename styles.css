@@ -1153,24 +1153,190 @@ select option {
     --kc: var(--k-error)
 }
 
-#gate {
-    max-width: 390px;
-    margin: 80px auto;
-    padding: 24px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    text-align: center
+#login-screen {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100vw;
+  /* height: 100vh; */
+  background-color: #121212; /* Matches your dark theme */
+  z-index: 9999;             /* Sits on top of absolutely everything */
+  display: flex;             /* Makes centering easy */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-#gate h2 {
-    font-family: "Source Serif Pro", Georgia, serif;
-    font-size: 22px;
-    margin: 0 0 8px
+/* ---------- account drawer ---------- */
+.head .navbtn {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin-top: 0
 }
 
-#gate p {
+#navDlg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    margin: 0;
+    width: min(300px, 85vw);
+    height: 100vh;
+    height: 100dvh;
+    max-height: none
+}
+
+#navDlg .sheet {
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border-radius: 0 20px 20px 0
+}
+
+#navDlg .sbody {
+    flex: 1;
+    padding: 72px 20px calc(20px + env(safe-area-inset-bottom, 0px))
+}
+
+#navDlg[open] {
+    animation: navIn .22s ease-out
+}
+
+#navDlg[open]::backdrop {
+    animation: navFade .22s ease-out
+}
+
+#navDlg.closing {
+    animation: navOut .18s ease-in forwards
+}
+
+@keyframes navIn {
+    from { transform: translateX(-100%) }
+    to { transform: none }
+}
+
+@keyframes navOut {
+    to { transform: translateX(-100%) }
+}
+
+@keyframes navFade {
+    from { opacity: 0 }
+    to { opacity: 1 }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    #navDlg[open],
+    #navDlg[open]::backdrop,
+    #navDlg.closing {
+        animation: none
+    }
+}
+
+.acct {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px
+}
+
+.avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--soft);
+    color: var(--ink);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font: 700 28px/1 "Source Serif Pro", Georgia, serif;
+    margin-bottom: 12px
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover
+}
+
+.acct-name {
+    margin: 0;
+    font: 700 20px/1.25 "Source Serif Pro", Georgia, serif;
+    overflow-wrap: anywhere
+}
+
+.acct-email {
+    margin: 0;
     color: var(--muted);
     font-size: 14px;
-    margin: 0 0 16px
+    overflow-wrap: anywhere
+}
+
+.divider {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 20px 0
+}
+
+/* ---------- sign-in drawer (guests) ---------- */
+.signin-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-bottom: 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, .25)
+}
+
+.signin-bar:not([hidden]) {
+    animation: barUp .25s ease-out
+}
+
+@keyframes barUp {
+    from { transform: translateY(100%) }
+    to { transform: none }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    .signin-bar:not([hidden]) { animation: none }
+}
+
+.signin-text {
+    flex: 1;
+    min-width: 0
+}
+
+.signin-text h2 {
+    font: 700 18px/1.2 "Source Serif Pro", Georgia, serif;
+    margin: 0 0 2px
+}
+
+.signin-text p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px
+}
+
+.signin-bar .btn {
+    flex: none;
+    padding: 12px 14px
+}
+
+@media (max-width: 400px) {
+    .signin-bar { flex-direction: column; align-items: stretch; gap: 12px }
+    .signin-bar .btn { width: 100% }
 }
