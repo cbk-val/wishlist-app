@@ -772,6 +772,24 @@ setInterval(function () {
   }
 }, 3000);
 
+// Debug panel is hidden unless the URL has ?debug=1
+if (new URLSearchParams(window.location.search).get("debug") === "1") {
+  var dbgBox = document.getElementById("debug-container");
+  var dbgBtn = document.getElementById("debug-toggle-btn");
+  var dbgPanel = document.getElementById("debug-panel");
+  var dbgClose = document.getElementById("debug-close");
+  if (dbgBox && dbgBtn && dbgPanel) {
+    dbgBox.hidden = false;
+    dbgBtn.onclick = function () {
+      var show = dbgPanel.style.display !== "block";
+      dbgPanel.style.display = show ? "block" : "none";
+      if (show) updateDebugPanel();
+    };
+    if (dbgClose) dbgClose.onclick = function () { dbgPanel.style.display = "none" };
+    setInterval(function () { if (dbgPanel.style.display === "block") updateDebugPanel() }, 3000);
+  }
+}
+
 async function signInWithGoogle() {
   var redirectUrl = (window.location.origin + window.location.pathname)
     .replace(/index\.html$/, '')
