@@ -1195,7 +1195,7 @@ select option {
     max-width: none;
     max-height: none;
     margin: 0;
-    border-radius: 0 20px 20px 0
+    border-radius: 0
 }
 
 #navDlg .sbody {
