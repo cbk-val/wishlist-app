@@ -1,25 +1,5 @@
 // app.js - Supabase-backed Wishlist App
 
-function renderLoginScreen() {
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-
-  const loginBtn = document.getElementById('login-btn');
-  if (loginBtn && !loginBtn.dataset.listenerAttached) {
-    loginBtn.dataset.listenerAttached = 'true';
-    loginBtn.onclick = async () => {
-      const email = document.getElementById('login-email').value.trim();
-      if (!email) return;
-
-      const status = document.getElementById('login-status');
-      status.textContent = 'Sending magic link...';
-
-      const { error } = await db.auth.signInWithOtp({ email });
-      status.textContent = error ? error.message : 'Check your email for the sign-in link!';
-    };
-  }
-}
-
 // --- Check Auth & Toggle Google Login Button ---
 async function checkAuthAndToggleUI() {
   var bar = document.getElementById("signin-bar");
@@ -34,12 +14,6 @@ async function checkAuthAndToggleUI() {
     console.error("Error checking auth status for UI", e);
     bar.hidden = false;
   }
-}
-
-function renderOwnerApp() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  console.log("Loading owner app interface...");
 }
 
 (function () {
@@ -68,22 +42,26 @@ function renderOwnerApp() {
   function ic(n, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + IC[n] + '"/></svg>' }
   [].forEach.call(document.querySelectorAll("i[data-ic]"), function (el) { el.outerHTML = ic(el.dataset.ic, +el.dataset.s || 18) });
 
-  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false };
+  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false, wishlistId: null, shareToken: null };
+
+  var PLACEHOLDER_CAT = { id: "x", name: "Wishlist", icon: "🎁", isDefault: false };
 
   async function loadFromSupabase() {
     try {
-      var catRes = await db.from('categories').select('*').order('sort_order', { ascending: true });
-      if (!catRes.error && catRes.data && catRes.data.length > 0) {
-        state.categories = catRes.data.map(function (c) {
-          return { id: c.id, name: c.name, icon: c.icon || '🎁' };
-        });
-      } else {
-        state.categories = [{ id: "main", name: "Default", icon: "🎁" }];
-      }
+      // Only THIS wishlist's categories, and only items inside those categories.
+      var catRes = await db.from('categories').select('*').eq('wishlist_id', state.wishlistId).order('sort_order', { ascending: true });
+      if (catRes.error) throw catRes.error;
+      state.categories = (catRes.data || []).map(function (c) {
+        return { id: c.id, name: c.name, icon: c.icon || '🎁', isDefault: !!c.is_default };
+      });
+      if (!state.categories.length) state.categories = [PLACEHOLDER_CAT];
 
-      var itemRes = await db.from('items').select('*').order('sort_order', { ascending: true });
-      if (!itemRes.error && itemRes.data) {
-        state.items = itemRes.data.map(function (i) {
+      var ids = state.categories.map(function (c) { return c.id }).filter(function (id) { return id !== "x" });
+      state.items = [];
+      if (ids.length) {
+        var itemRes = await db.from('items').select('*').in('category_id', ids).order('sort_order', { ascending: true });
+        if (itemRes.error) throw itemRes.error;
+        state.items = (itemRes.data || []).map(function (i) {
           return {
             id: i.id,
             categoryId: i.category_id,
@@ -92,7 +70,8 @@ function renderOwnerApp() {
             link: i.link,
             note: i.note,
             img: i.img,
-            got: i.got || false
+            got: i.got || false,
+            sort: i.sort_order || 0
           };
         });
       }
@@ -109,7 +88,29 @@ function renderOwnerApp() {
     }
   }
 
-  function save() { if (VIEW) return; if (state.sharing) queuePub() }
+  // Title edits are saved to the database (debounced).
+  var titleT = null;
+  function save() { if (VIEW) return; saveTitle() }
+  function saveTitle() {
+    clearTimeout(titleT);
+    titleT = setTimeout(async function () {
+      if (VIEW || !state.wishlistId) return;
+      var r = await db.from('wishlists').update({ title: state.title }).eq('id', state.wishlistId);
+      if (r.error) toast("Couldn’t save the title. Try again.");
+    }, 600);
+  }
+  // Persist drag-and-drop order: one small update per item (upsert would trip NOT NULL columns).
+  async function persistOrder(ids) {
+    var rs = await Promise.all(ids.map(function (id, n) {
+      return db.from('items').update({ sort_order: n + 1 }).eq('id', id);
+    }));
+    if (rs.some(function (r) { return r.error })) toast("Couldn’t save the new order. Try again.");
+  }
+  function nextSort(catId) {
+    var m = 0;
+    state.items.forEach(function (i) { if (i.categoryId === catId && (i.sort || 0) > m) m = i.sort || 0 });
+    return m + 1;
+  }
   function money(n) { return "₱" + (Math.round(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] }) }
   document.querySelectorAll("dialog").forEach(function (d) { d.addEventListener("close", function () { var s = d.querySelector(".slot"); if (s) s.innerHTML = ""; clearTimeout(notifyT) }) });
@@ -196,7 +197,8 @@ function renderOwnerApp() {
       var ids = [].map.call(ul.children, function (c) { return c.dataset.id });
       var mine = curItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
       state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id) { return byId[id] }));
-      save(); render();
+      ids.forEach(function (id, n) { if (byId[id]) byId[id].sort = n + 1 });
+      persistOrder(ids); render();
     }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
   });
@@ -209,7 +211,7 @@ function renderOwnerApp() {
     $("catName").value = l ? l.name : "";
 
     setCatIcon(l ? l.icon : "🎁"); refreshCounts(); clearErr($("catName"));
-    $("catDelWrap").hidden = !l || l.id === "main" || state.categories.length < 2;
+    $("catDelWrap").hidden = !l || l.isDefault || state.categories.length < 2;
     $("catDel").innerHTML = ic("trash") + "<span>Delete category</span>";
     $("catDlg").showModal();
   }
@@ -232,9 +234,9 @@ function renderOwnerApp() {
       if (error) { toast("Error updating category"); return; }
       catEdit.name = name; catEdit.icon = catIcon; toast("Category updated");
     } else {
-      var { data, error } = await db.from('categories').insert([{ name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
+      var { data, error } = await db.from('categories').insert([{ wishlist_id: state.wishlistId, name: name, icon: catIcon, sort_order: state.categories.length + 1 }]).select().single();
       if (error) { toast("Error creating category: " + error.message); return; }
-      var l = { id: data.id, name: data.name, icon: data.icon };
+      var l = { id: data.id, name: data.name, icon: data.icon, isDefault: false };
       state.categories.push(l); state.cur = l.id; reorder = false; toast("Category created");
     }
     render(); showCat(); $("catDlg").close();
@@ -359,6 +361,7 @@ function renderOwnerApp() {
 
     if (editId) {
       var it = state.items.filter(function (i) { return i.id === editId })[0];
+      if (it.categoryId !== data.category_id) data.sort_order = nextSort(data.category_id);
       var { error: updateError } = await db.from('items').update(data).eq('id', editId);
       if (updateError) {
         toast("Error updating gift: " + updateError.message);
@@ -375,11 +378,13 @@ function renderOwnerApp() {
         price: data.price,
         link: data.link,
         note: data.note,
-        img: data.img
+        img: data.img,
+        sort: data.sort_order != null ? data.sort_order : it.sort
       });
       toast("Gift updated");
     } else {
       data.got = false;
+      data.sort_order = nextSort(data.category_id);
       var { data: savedItem, error } = await db.from('items').insert([data]).select().single();
 
       if (error) {
@@ -395,7 +400,8 @@ function renderOwnerApp() {
         link: savedItem.link,
         note: savedItem.note,
         img: savedItem.img,
-        got: savedItem.got || false
+        got: savedItem.got || false,
+        sort: savedItem.sort_order || 0
       });
       toast("Gift added");
     }
@@ -492,40 +498,15 @@ function renderOwnerApp() {
     }
   });
 
-  var SHARE_URL = "https://claude.ai/artifact/HWHiHzpmAnVa5BS4XBpyvi", LT = "<", pubT = null;
-  try { SNAP = JSON.parse($("snap").textContent) } catch (e) { SNAP = null }
-  function escTpl(t) { return t.split(LT + "/script").join(LT + "\\/script").split(LT + "!--").join(LT + "\\!--") }
-  function unescTpl(t) { return t.split(LT + "\\/script").join(LT + "/script").split(LT + "\\!--").join(LT + "!--") }
-  function buildHtml(data) { var T = unescTpl($("tpl").textContent), snap = JSON.stringify(data).replace(/</g, "\\u003c"); return T.replace(/@@(SNAP|TPL)@@/g, function (m, k) { return k === "SNAP" ? snap : escTpl(T) }) }
-  function snapData() {
-    if (!state.sharing) return { on: false, updated: Date.now() };
-    var items = state.items.filter(function (i) { return !i.got });
-    var cats = state.categories.filter(function (c) { return items.some(function (i) { return i.categoryId === c.id }) });
-    return { on: true, updated: Date.now(), title: state.title, categories: cats, items: items.map(function (i) { return { id: i.id, categoryId: i.categoryId, name: i.name, price: i.price, link: i.link, note: i.note, img: i.img } }) };
-  }
-  function viewState() {
-    var s = SNAP || {}, cats = (s.on && s.categories && s.categories.length) ? s.categories : [{ id: "x", name: "Wishlist", icon: "🎁" }];
-    return { title: (s.on && s.title) || "Wishlist", categories: cats, items: s.on ? (s.items || []) : [], cur: cats[0].id };
-  }
-  function queuePub() { clearTimeout(pubT); pubT = setTimeout(tryPub, 5000) }
-  function tryPub() { if (document.querySelector("dialog[open]") || reorder) { pubT = setTimeout(tryPub, 3000); return } doPub(false) }
-  async function doPub(force) {
-    clearTimeout(pubT);
-    var art = null; try { art = window.claude && await claude.use("artifact") } catch (e) { }
-    if (!art) { toast("Sharing isn’t available in this view"); return false }
-    var data = snapData(), sig = JSON.stringify(Object.assign({}, data, { updated: 0 }));
-    if (!force && sig === state.pubSig) return true;
-    var prev = state.pubSig, prevAt = state.pubAt; state.pubSig = sig; state.pubAt = Date.now();
-    try { sessionStorage.setItem("wl-y", String(scrollY)) } catch (e) { }
-    try { await art.publish(buildHtml(data)); return true }
-    catch (err) {
-      state.pubSig = prev; state.pubAt = prevAt;
-      var c = err && err.code;
-      if (c === "conflict") return false;
-      if (c === "rate_limited") { pubT = setTimeout(function () { doPub(false) }, 30000); return false }
-      toast(c === "too_large" ? "Shared view is too big — try removing some photos" : (c === "not_writer" || c === "not_granted") ? "Only the owner can update the shared view" : "Couldn’t update the shared view");
-      return false;
-    }
+  var creating = false;
+  function shareUrl() { return location.origin + location.pathname.replace(/index\.html$/, "") + "?s=" + state.shareToken }
+
+  // Turning sharing off rotates the token in the database, so the old link stops working.
+  async function setSharing(on) {
+    var r = await db.from('wishlists').update({ sharing_active: on }).eq('id', state.wishlistId).select('share_token, sharing_active').single();
+    if (r.error || !r.data) { toast("Couldn’t update sharing. Try again."); return false }
+    state.sharing = !!r.data.sharing_active; state.shareToken = r.data.share_token;
+    return true;
   }
   function renderShare() {
     var b = $("shBody");
@@ -533,32 +514,26 @@ function renderOwnerApp() {
     if (!state.sharing) {
       b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
     } else {
-      b.innerHTML = '<p class="hint">Your view-only link updates automatically after every change.' + (state.pubAt ? ' Last updated ' + new Date(state.pubAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + '.' : '') + '</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + SHARE_URL + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><p class="hint" style="margin-top:14px">For people without a Claude account to open it, set this page’s access to “Anyone with the link” in Claude’s Share menu.</p><button class="btn red-o wide" id="shOff" style="margin-top:10px">' + ic("trash") + '<span>Stop sharing</span></button>';
+      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
     }
   }
-  var creating = false, noticeT = null;
   async function startShare() {
     if (state.sharing) { renderShare(); return }
-    state.sharing = true; creating = true; renderShare();
-    try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
-    var ok = await doPub(true);
-    creating = false;
-    if (!ok) { state.sharing = false; try { sessionStorage.removeItem("wl-open"); } catch (x) { } }
-    renderShare();
+    creating = true; renderShare();
+    await setSharing(true);
+    creating = false; renderShare();
   }
   function openShare() { if (!$("shDlg").open) $("shDlg").showModal(); startShare() }
   $("share").onclick = openShare;
   $("shDlg").addEventListener("click", async function (e) {
     if (e.target === $("shDlg") || e.target.closest("[data-close]")) { $("shDlg").close(); return }
     var b = e.target.closest("button"); if (!b) return;
-    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(SHARE_URL); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
-    if (b.id === "shSend") { navigator.share({ title: state.title, url: SHARE_URL }).catch(function () { }); return }
+    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(shareUrl()); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
+    if (b.id === "shSend") { navigator.share({ title: state.title, url: shareUrl() }).catch(function () { }); return }
     if (b.id === "shOn") { startShare(); return }
     if (b.id === "shOff") {
-      state.sharing = false;
-      try { sessionStorage.setItem("wl-open", "1") } catch (x) { }
-      var ok = await doPub(true);
-      if (!ok) { state.sharing = !state.sharing; renderShare() }
+      if (await setSharing(false)) toast("Sharing stopped");
+      renderShare();
     }
   });
 
@@ -600,49 +575,79 @@ function renderOwnerApp() {
   async function boot() {
     document.body.classList.remove("pending");
 
-    // Check actual Supabase session & wishlist ownership
+    var token = new URLSearchParams(location.search).get("s");
     var sessionRes = await db.auth.getSession();
     var session = sessionRes && sessionRes.data && sessionRes.data.session;
     setupAccountMenu(session);
-    var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
-
-    // Toggle the button visibility right away on boot
     await checkAuthAndToggleUI();
 
-    var isOwner = !!(session && session.user && wlRes.data && session.user.id === wlRes.data.owner_id);
+    // 1) Someone opened a share link: read-only, served by get_shared_wishlist()
+    if (token) { await loadShared(token); return }
 
-    if (!isOwner) {
-      // Enforce read-only viewer mode for guests or non-owners
-      VIEW = true;
-      document.body.classList.add("viewer");
-      $("title").contentEditable = "false";
-      $("title").removeAttribute("aria-label");
-
-      var n = $("viewNote");
-      if (n) {
-        n.hidden = false;
-        n.textContent = "View-only";
-      }
-      var loginBtn = document.getElementById("owner-login-btn");
-      if (loginBtn) {
-        loginBtn.style.display = "inline-block";
-        loginBtn.onclick = function () {
-          renderLoginScreen(); // or trigger your Supabase auth modal/redirect
-        };
-      }
-    } else {
-      // Enable full owner editing
-      VIEW = false;
-      document.body.classList.remove("viewer");
-      $("title").contentEditable = "true";
+    // 2) Signed out with no link: nothing to show yet
+    if (!session || !session.user) {
+      enterViewMode("Sign in to create your own wishlist.");
+      state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
+      render();
+      return;
     }
 
-    if (wlRes.data && wlRes.data.title) {
-      state.title = wlRes.data.title;
-    }
+    // 3) Signed in: get (or create) THIS user's wishlist
+    var wl = await ensureWishlist();
+    if (!wl) return;
+    state.wishlistId = wl.id;
+    state.title = wl.title || "My wishlist";
+    state.shareToken = wl.share_token;
+    state.sharing = !!wl.sharing_active;
 
+    VIEW = false;
+    document.body.classList.remove("viewer");
+    $("title").contentEditable = "true";
     await loadFromSupabase();
   }
+
+  function enterViewMode(note) {
+    VIEW = true;
+    document.body.classList.add("viewer");
+    $("title").contentEditable = "false";
+    $("title").removeAttribute("aria-label");
+    var n = $("viewNote");
+    if (n) { n.hidden = false; n.textContent = note || "View-only" }
+  }
+
+  async function ensureWishlist() {
+    var r = await db.rpc('ensure_my_wishlist');
+    if (r.error || !r.data) {
+      console.error("ensure_my_wishlist failed:", r.error);
+      toast("Couldn’t load your wishlist. Try again.");
+      return null;
+    }
+    return r.data;
+  }
+
+  async function loadShared(token) {
+    enterViewMode("View-only");
+    var r = await db.rpc('get_shared_wishlist', { p_token: token });
+    if (r.error || !r.data) {
+      state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
+      render();
+      toast("This link isn’t active.");
+      return;
+    }
+    var d = r.data, cats = d.categories || [];
+    state.title = d.title || "Wishlist";
+    state.categories = cats.length ? cats.map(function (c) { return { id: c.id, name: c.name, icon: c.icon || "🎁", isDefault: false } }) : [PLACEHOLDER_CAT];
+    state.items = [];
+    cats.forEach(function (c) {
+      (c.items || []).forEach(function (i) {
+        state.items.push({ id: i.id, categoryId: c.id, name: i.name, price: i.price, link: i.link, note: i.note, img: i.img, got: false });
+      });
+    });
+    state.cur = state.categories[0].id;
+    if (d.updated_at) $("viewNote").textContent = "View-only · Updated " + new Date(d.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    render(); showCat();
+  }
+
   $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
   $("title").addEventListener("blur", function () { if (!$("title").textContent.trim()) { $("title").textContent = state.title; setErr($("title"), "Your wishlist needs a title", true); setTimeout(function () { clearErr($("title")) }, 2600) } });
   $("title").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); e.target.blur() } });
@@ -686,7 +691,9 @@ async function updateDebugPanel() {
   // 3. Fetch whose wishlist we are viewing and show the full owner ID or email
   let ownerIdVal = "Unknown";
   try {
-    var wlRes = await db.from('wishlists').select('id, title, owner_id').limit(1).single();
+    var wq = db.from('wishlists').select('id, title, owner_id');
+    wq = (currentSession && currentSession.user) ? wq.eq('owner_id', currentSession.user.id) : wq.limit(1);
+    var wlRes = await wq.maybeSingle();
     if (!wlRes.error && wlRes.data) {
       var title = wlRes.data.title || "Wishlist";
       ownerIdVal = wlRes.data.owner_id || "None";
@@ -709,37 +716,6 @@ async function updateDebugPanel() {
   canEditEl.textContent = isEditable ? "Yes (Owner)" : "No (View-only)";
   canEditEl.style.color = isEditable ? "#4ade80" : "#f87171";
 }
-
-// Wire up toggle behavior for the debug button
-document.addEventListener("DOMContentLoaded", function () {
-  var btn = document.getElementById("debug-toggle-btn");
-  var panel = document.getElementById("debug-panel");
-  var closeBtn = document.getElementById("debug-close");
-
-  if (btn && panel) {
-    btn.onclick = function () {
-      var isVisible = panel.style.display === "block";
-      panel.style.display = isVisible ? "none" : "block";
-      if (!isVisible) {
-        updateDebugPanel(); // Refresh stats whenever opened
-      }
-    };
-  }
-
-  if (closeBtn && panel) {
-    closeBtn.onclick = function () {
-      panel.style.display = "none";
-    };
-  }
-});
-
-// Periodically update debug info if panel is open
-setInterval(function () {
-  var panel = document.getElementById("debug-panel");
-  if (panel && panel.style.display === "block") {
-    updateDebugPanel();
-  }
-}, 3000);
 
 // Wire up toggle behavior for the debug button
 document.addEventListener("DOMContentLoaded", function () {
