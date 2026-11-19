@@ -1364,6 +1364,10 @@ select option {
     cursor: pointer
 }
 
+a.navitem {
+    text-decoration: none
+}
+
 .navitem:hover,
 .navitem:focus-visible {
     background: var(--soft)
