@@ -37,7 +37,15 @@
         <button class="btn" id="share"><i data-ic="share"></i><span>Share list</span></button>
       </div>
       <p id="viewNote" hidden></p>
-            <div class="catbar">
+      <section class="unavail" id="unavail" hidden>
+        <div>
+          <i data-ic="link" data-s="40"></i>
+          <h2>This wishlist isn’t shared right now</h2>
+        </div>
+        <p>The owner may have turned sharing off. Ask them to share it again, or double-check the link.</p>
+        <button type="button" id="myList"><i data-ic="home"></i><span>My Wishlist</span></button>
+      </section>
+      <div class="catbar">
         <div class="cats" id="cats" role="group" aria-label="Categories"></div>
         <button class="chip new" id="addCat" aria-label="Add category" title="Add category"><i data-ic="plus"
             data-s="16"></i><span>Add category</span></button>
@@ -49,10 +57,6 @@
       <button type="button" class="btn reorder-btn" id="reorderBtn"><i data-ic="reorder"></i><span>Reorder
           items</span></button>
       <ul id="list"></ul>
-      <section id="received" aria-labelledby="recvTitle" hidden>
-        <h2 class="sec" id="recvTitle">Received (0)</h2>
-        <ul id="recvList"></ul>
-      </section>
     </div>
     <button class="fab" id="add"><i data-ic="plus" data-s="20"></i><span>Add a gift</span></button>
     <aside class="signin-bar" id="signin-bar" aria-label="Sign in" hidden>

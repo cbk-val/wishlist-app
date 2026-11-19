@@ -141,51 +141,38 @@ async function checkAuthAndToggleUI() {
   function safeLink(u) { try { var x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "" } catch (e) { return "" } }
   function fixUrl(u) { u = u.trim(); if (u && !/^https?:\/\//i.test(u)) u = "https://" + u; return u }
   function curCategory() { return state.categories.filter(function (l) { return l.id === state.cur })[0] }
-  // Viewers never see received gifts (client-side guard; get_shared_wishlist() already leaves them out).
-  function curItems() { return state.items.filter(function (i) { return i.categoryId === state.cur && !(VIEW && i.got) }) }
-  function openItems() { return curItems().filter(function (i) { return !i.got }) }
-  function doneItems() { return curItems().filter(function (i) { return i.got }) }
+  function curItems() { return state.items.filter(function (i) { return i.categoryId === state.cur }) }
 
   /* ---------- render ---------- */
-  function cardHtml(i, num) {
-    var l = i.link ? safeLink(i.link) : "";
-    var pic = '<div class="pic">' + (i.img ? '<img src="' + esc(i.img) + '" alt="">' : ic("gift", 26)) + '</div>';
-    var thumb = '<div class="thumb">' + pic + (i.got ? '<span class="gotbadge" role="img" aria-label="Got it">' + ic("check", 12) + '</span>' : "") + '</div>';
-    return '<li class="item' + (i.got ? " got" : "") + (reorder ? " reorder" : "") + '" data-id="' + i.id + '">' +
-      '<span class="num">' + (num || "") + '</span>' + thumb + '<div>' +
-      '<p class="name">' + (l ? '<a href="' + esc(l) + '" target="_blank" rel="noopener noreferrer">' + esc(i.name) + ic("link", 14) + '</a>' : esc(i.name)) + '</p>' +
-      '<div class="meta">' + (i.price ? '<span class="price">' + money(+i.price) + '</span>' : "") + '</div>' +
-      (i.note ? '<p class="note">' + esc(i.note) + '</p><button class="more" data-a="more" aria-expanded="false" hidden>Show more</button>' : "") + '</div>' +
-      (reorder ? '<div class="grip" role="button" aria-label="Drag to reorder ' + esc(i.name) + '">' + ic("grip", 22) + '</div>' :
-        '<button class="edit" data-a="menu" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ' + esc(i.name) + '">' + DOTS + '</button>' +
-        '<div class="menu" role="menu" hidden><button role="menuitem" data-a="got">' + ic("check", 18) + (i.got ? "Mark as not got" : "Mark as got") + '</button><button role="menuitem" data-a="edit">' + ic("pencil", 18) + 'Edit gift</button></div>') + '</li>';
-  }
   function render() {
     $("title").textContent = state.title; document.title = state.title;
     $("cats").innerHTML = state.categories.map(function (c) {
       var on = c.id === state.cur, inner = '<span aria-hidden="true">' + c.icon + '</span>' + esc(c.name);
       return on ? '<div class="chipg"><button class="chip-main" data-c="' + c.id + '" aria-pressed="true">' + inner + '</button><button class="chip-edit" data-edit="' + c.id + '" aria-label="Edit category ' + esc(c.name) + '">' + ic("pencil", 14) + '</button></div>' : '<button class="chip" data-c="' + c.id + '" aria-pressed="false">' + inner + '</button>';
     }).join("");
-    var items = curItems(), open = openItems(), done = doneItems();
+    var items = curItems();
     $("rbar").hidden = !reorder;
     $("reorderBtn").hidden = reorder;
-    $("reorderBtn").disabled = open.length < 2;
+    $("reorderBtn").disabled = curItems().length < 2;
     $("addCat").classList.toggle("compact", state.categories.length >= 3);
     var ul = $("list");
     $("add").classList.toggle("attn", !items.length && !VIEW && !attnDone);
-    $("received").hidden = true;
     if (!items.length) {
       ul.innerHTML = '<li class="empty"><div class="pic" style="margin:0 auto;background:transparent">' + ic("gift", 30) + '</div><h2>This category is empty</h2><p>' + (VIEW ? "Check back soon." : "Tap Add a gift below to add the first thing you’d love to receive.") + '</p></li>';
       return;
     }
-    // Received gifts live in their own list under the regular one. Order is applied at display time,
-    // so sort_order is untouched and "Mark as not got" puts a gift back where it was.
-    ul.innerHTML = open.map(function (i, n) { return cardHtml(i, n + 1) }).join("");
-    if (done.length && !reorder) {
-      $("recvTitle").textContent = "Received (" + done.length + ")";
-      $("recvList").innerHTML = done.map(function (i) { return cardHtml(i, 0) }).join("");
-      $("received").hidden = false;
-    }
+    ul.innerHTML = items.map(function (i, n) {
+      var l = i.link ? safeLink(i.link) : "";
+      return '<li class="item' + (i.got ? " got" : "") + (reorder ? " reorder" : "") + '" data-id="' + i.id + '">' +
+        '<span class="num">' + (n + 1) + '</span><div class="pic">' + (i.img ? '<img src="' + esc(i.img) + '" alt="">' : ic("gift", 26)) + '</div><div>' +
+        '<p class="name">' + (l ? '<a href="' + esc(l) + '" target="_blank" rel="noopener noreferrer">' + esc(i.name) + ic("link", 14) + '</a>' : esc(i.name)) + '</p>' +
+        '<div class="meta">' + (i.price ? '<span class="price">' + money(+i.price) + '</span>' : "") +
+        (i.got ? '<span class="tag ok">Got it</span>' : "") + '</div>' +
+        (i.note ? '<p class="note">' + esc(i.note) + '</p><button class="more" data-a="more" aria-expanded="false" hidden>Show more</button>' : "") + '</div>' +
+        (reorder ? '<div class="grip" role="button" aria-label="Drag to reorder ' + esc(i.name) + '">' + ic("grip", 22) + '</div>' :
+          '<button class="edit" data-a="menu" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ' + esc(i.name) + '">' + DOTS + '</button>' +
+          '<div class="menu" role="menu" hidden><button role="menuitem" data-a="got">' + ic("check", 18) + (i.got ? "Mark as not got" : "Mark as got") + '</button><button role="menuitem" data-a="edit">' + ic("pencil", 18) + 'Edit gift</button></div>') + '</li>';
+    }).join("");
     measureNotes();
   }
   var DOTS = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
@@ -208,13 +195,10 @@ async function checkAuthAndToggleUI() {
     function up() {
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
       var ids = [].map.call(ul.children, function (c) { return c.dataset.id });
-      // Only open gifts are draggable. Received gifts are kept after them, so none get dropped or renumbered into a clash.
-      var mine = openItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
-      var kept = state.items.filter(function (i) { return i.categoryId === state.cur && i.got });
-      var order = ids.map(function (id) { return byId[id] }).concat(kept);
-      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(order);
-      order.forEach(function (it, n) { it.sort = n + 1 });
-      persistOrder(order.map(function (it) { return it.id })); render();
+      var mine = curItems(), byId = {}; mine.forEach(function (i) { byId[i.id] = i });
+      state.items = state.items.filter(function (i) { return i.categoryId !== state.cur }).concat(ids.map(function (id) { return byId[id] }));
+      ids.forEach(function (id, n) { if (byId[id]) byId[id].sort = n + 1 });
+      persistOrder(ids); render();
     }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
   });
@@ -483,8 +467,7 @@ async function checkAuthAndToggleUI() {
   $("clrImg").onclick = function () { setImg("") };
   $("fFile").onchange = function () { if (this.files[0]) resize(this.files[0]); this.value = "" };
 
-  // One handler for both the regular list and the Received list.
-  async function listClick(e) {
+  $("list").onclick = async function (e) {
     var b = e.target.closest("[data-a]");
     if (!b) { closeMenus(); return }
     var a = b.dataset.a;
@@ -500,10 +483,8 @@ async function checkAuthAndToggleUI() {
       toast(it.got ? "Marked as got" : "Back on the list");
     }
     render();
-  }
-  $("list").onclick = listClick;
-  $("recvList").onclick = listClick;
-  $("reorderBtn").onclick = function () { if (openItems().length < 2) { toast("Add at least two gifts to reorder."); return } reorder = true; render() };
+  };
+  $("reorderBtn").onclick = function () { if (curItems().length < 2) { toast("Add at least two gifts to reorder."); return } reorder = true; render() };
   function closeMenus() { [].forEach.call(document.querySelectorAll(".menu"), function (m) { m.hidden = true; var li = m.parentNode; li.classList.remove("menu-open"); var t = li.querySelector("[data-a=menu]"); if (t) t.setAttribute("aria-expanded", "false") }) }
   function toggleMenu(btn) { var li = btn.closest(".item"), m = li.querySelector(".menu"), was = !m.hidden; closeMenus(); if (!was) { m.hidden = false; li.classList.add("menu-open"); btn.setAttribute("aria-expanded", "true"); m.querySelector("button").focus() } }
   document.addEventListener("click", function (e) { if (!e.target.closest(".item")) closeMenus() });
@@ -533,7 +514,7 @@ async function checkAuthAndToggleUI() {
     if (!state.sharing) {
       b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
     } else {
-      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
+      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden. If you stop sharing, the same link works again when you share later.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
     }
   }
   async function startShare() {
@@ -651,15 +632,24 @@ async function checkAuthAndToggleUI() {
     return r.data;
   }
 
+  // Link is not shared (or unknown): full-page message instead of the list
+  function showUnavailable() {
+    document.body.classList.add("unavailable");
+    $("unavail").hidden = false;
+    $("viewNote").hidden = true;
+    document.title = "Wishlist not shared";
+  }
+
   async function loadShared(token) {
     enterViewMode("View-only");
     var r = await db.rpc('get_shared_wishlist', { p_token: token });
-    if (r.error || !r.data) {
+    if (r.error) {
       state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
       render();
-      toast("This link isn’t active.");
+      toast("Couldn’t load this wishlist. Try again.");
       return;
     }
+    if (!r.data) { showUnavailable(); return }
     var d = r.data, cats = d.categories || [];
     state.title = d.title || "Wishlist";
     state.categories = cats.length ? cats.map(function (c) { return { id: c.id, name: c.name, icon: c.icon || "🎁", isDefault: false } }) : [PLACEHOLDER_CAT];
