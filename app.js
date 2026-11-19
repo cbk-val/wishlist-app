@@ -581,6 +581,13 @@ async function checkAuthAndToggleUI() {
     setupAccountMenu(session);
     await checkAuthAndToggleUI();
 
+    // Drawer item: go to my own list (if I'm already on it, just close the drawer)
+    var mine = $("myList");
+    if (mine) mine.onclick = function () {
+      if (token) location.assign(location.origin + location.pathname.replace(/index\.html$/, ""));
+      else closeNav();
+    };
+
     // 1) Someone opened a share link: read-only, served by get_shared_wishlist()
     if (token) { await loadShared(token); return }
 
