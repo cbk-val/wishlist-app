@@ -5,6 +5,7 @@
     --k-error: #c62828;
     --bg: #f2f2f2;
     --surface: #fff;
+    --card: #fff;
     --ink: #111;
     --muted: #5e5e5e;
     --line: #dcdcdc;
@@ -32,6 +33,7 @@
         --k-error: #ff8a80;
         --bg: #121212;
         --surface: #1d1d1d;
+        --card: #2f2f2f;
         --ink: #f2f2f2;
         --muted: #9a9a9a;
         --line: #333;
@@ -56,6 +58,7 @@
     --k-error: #ff8a80;
     --bg: #121212;
     --surface: #1d1d1d;
+    --card: #2f2f2f;
     --ink: #f2f2f2;
     --muted: #9a9a9a;
     --line: #333;
@@ -372,7 +375,61 @@ ul {
 }
 
 .item.got {
+    --got-bg: color-mix(in srgb, var(--green) 8%, var(--card));
+    background: var(--got-bg)
+}
+
+/* dim the content, not the card, so the badge stays at full strength */
+.item.got .pic,
+.item.got .name,
+.item.got .meta,
+.item.got .note,
+.item.got .more {
     opacity: .6
+}
+
+.thumb {
+    position: relative;
+    width: 64px;
+    height: 64px
+}
+
+.gotbadge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--got-bg)
+}
+
+#received {
+    margin-top: 18px
+}
+
+.sec {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 10px;
+    padding: 4px 0;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5
+}
+
+.sec::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line)
 }
 
 .num {
