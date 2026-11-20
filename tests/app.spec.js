@@ -16,7 +16,7 @@ test.describe('Landing page', () => {
     await expect(page.locator('[data-signin]')).toHaveCount(2);
   });
 
-  test('both wishlist CTAs use Google sign-in and redirect to the app root', async ({ page }) => {
+  test('CTAs use Google sign-in and preserve a GitHub Pages project path', async ({ page }) => {
     const scenario = { session: null, data: makeData(), delayMs: 0, failWrites: false };
     await page.route(/cdn\.jsdelivr\.net/, (r) => r.fulfill({ contentType: 'application/javascript', body: FAKE_SRC }));
     await page.addInitScript((sc) => { window.__FAKE = sc; }, scenario);
@@ -34,11 +34,12 @@ test.describe('Landing page', () => {
 
     await page.reload();
     await expect(page).toHaveURL('http://localhost:4173/landing/#oauth-callback');
+    await page.evaluate(() => history.replaceState(null, '', '/wishlist-app/?s=shared'));
     await ctas.nth(1).click();
     await expect.poll(async () => (await page.evaluate(() => window.__LOG)).length).toBe(1);
 
     const secondCall = await page.evaluate(() => window.__LOG[0]);
-    expect([secondCall.provider, secondCall.redirectTo]).toEqual(['google', 'http://localhost:4173/']);
+    expect([secondCall.provider, secondCall.redirectTo]).toEqual(['google', 'http://localhost:4173/wishlist-app/']);
   });
 });
 
