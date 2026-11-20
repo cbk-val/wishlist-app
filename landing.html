@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wishlist — a gift list your friends can actually use</title>
+  <meta name="description"
+    content="Keep every gift you’d love in one place, then share a simple view-only link. Friends and family don’t need an account.">
+  <meta property="og:title" content="Wishlist — a gift list your friends can actually use">
+  <meta property="og:description"
+    content="Keep every gift you’d love in one place, then share a simple view-only link.">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Source+Serif+Pro:wght@700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="landing.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body class="checking landing">
+  <header class="lp-head"></header>
+
+  <main id="main">
+    <div class="lp">
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">Tell people what you’d love to get.</h1>
+        <p class="lead">Keep every gift you want in one place, then share a simple link. Friends and family can
+          browse your list without making an account.</p>
+        <div class="cta-row">
+          <button type="button" class="btn primary cta" data-signin>Create your wishlist</button>
+        </div>
+        <p class="cta-note">Sign in with Google to get started.</p>
+        <p class="cta-status" id="cta-status" role="alert" hidden></p>
+      </section>
+
+      <a class="divider" href="#how">
+        <span class="divider-t">How it works</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M6 13l6 6 6-6" />
+        </svg>
+      </a>
+
+      <section class="how" id="how" aria-label="How it works">
+        <ol class="steps">
+          <li>
+            <span class="step-n" aria-hidden="true">1</span>
+            <h3>Add what you want</h3>
+            <p>Add a gift with a name, photo, price, store link and a note for the giver, like size, color or
+              model.</p>
+          </li>
+          <li>
+            <span class="step-n" aria-hidden="true">2</span>
+            <h3>Sort it your way</h3>
+            <p>Group gifts into categories such as Birthday or Home, then drag them into the order that matters
+              most.</p>
+          </li>
+          <li>
+            <span class="step-n" aria-hidden="true">3</span>
+            <h3>Share one link</h3>
+            <p>Send a view-only link. People can browse your list and open store links, but can’t change
+              anything.</p>
+          </li>
+        </ol>
+      </section>
+    </div>
+
+    <section class="final" aria-labelledby="final-title">
+      <h2 id="final-title">Ready to start your list?</h2>
+      <button type="button" class="btn primary cta" data-signin>Create your wishlist</button>
+      <p class="cta-note">Sign in with Google to get started.</p>
+    </section>
+  </main>
+
+  <script src="supabase-client.js"></script>
+  <script>
+    (function () {
+      var body = document.body, statusEl = document.getElementById("cta-status");
+      function reveal() { body.classList.remove("checking") }
+      // Never leave the page blank if the session check is slow
+      var fallback = setTimeout(reveal, 1500);
+
+      // Signed-in visitors skip the landing page and go straight to their list
+      db.auth.getSession().then(function (r) {
+        var s = r && r.data && r.data.session;
+        if (s && s.user) { location.replace("index.html"); return }
+        clearTimeout(fallback); reveal();
+      }).catch(function () { clearTimeout(fallback); reveal() });
+
+      function appUrl() {
+        return (location.origin + location.pathname).replace(/landing\.html$/, "").replace(/\/?$/, "/");
+      }
+
+      async function signIn(btn) {
+        var all = document.querySelectorAll("[data-signin]");
+        statusEl.hidden = true;
+        all.forEach(function (b) { b.disabled = true });
+        var res = await db.auth.signInWithOAuth({ provider: "google", options: { redirectTo: appUrl() } });
+        if (res && res.error) {
+          all.forEach(function (b) { b.disabled = false });
+          statusEl.textContent = "Couldn’t start Google sign-in. Please try again.";
+          statusEl.hidden = false;
+        }
+      }
+      document.querySelectorAll("[data-signin]").forEach(function (b) {
+        b.addEventListener("click", function () { signIn(b) });
+      });
+    })();
+  </script>
+</body>
+
+</html>

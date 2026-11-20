@@ -1,0 +1,211 @@
+/* Landing page. Loads after styles.css and reuses its tokens, buttons and card styles. */
+
+/* Hide the page until the session check finishes, so signed-in visitors don't see a flash */
+.checking main {
+  visibility: hidden
+}
+
+/* page fills the screen so the closing band reaches the bottom */
+.landing {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column
+}
+
+.landing main {
+  flex: 1;
+  display: flex;
+  flex-direction: column
+}
+
+.lp {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 16px 20px 72px
+}
+
+.lp h1,
+.lp h2,
+.lp h3,
+.final h2 {
+  letter-spacing: -.01em
+}
+
+.lp h2,
+.final h2 {
+  font-family: "Source Serif Pro", Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(24px, 6vw, 30px);
+  line-height: 1.2;
+  margin: 0 0 20px
+}
+
+.lp h3 {
+  font-family: "Source Serif Pro", Georgia, serif;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 0 0 6px
+}
+
+.lp p,
+.final p {
+  margin: 0
+}
+
+/* hero */
+.hero {
+  padding: 56px 0 8px
+}
+
+.hero h1 {
+  font-size: clamp(36px, 10vw, 56px);
+  line-height: 1.05;
+  margin: 0 0 16px;
+  max-width: 14ch
+}
+
+.lead {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.55;
+  max-width: 46ch
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px
+}
+
+.cta {
+  padding: 16px 24px;
+  font-size: 16px;
+  border-radius: 16px
+}
+
+.lp .cta-note,
+.final .cta-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 12px
+}
+
+.lp .cta-status,
+.final .cta-status {
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 10px
+}
+
+.btn:disabled {
+  opacity: .6;
+  cursor: progress
+}
+
+/* sections */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 64px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 8px;
+  border-top: 0px
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line)
+}
+
+.divider svg {
+  order: 1;
+  margin-left: -4px
+}
+
+.divider-t {
+  order: 1
+}
+
+.divider::after {
+  order: 2
+}
+
+.divider:hover {
+  color: var(--ink)
+}
+
+.how {
+  margin-top: 24px
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px
+}
+
+.steps li {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 20px
+}
+
+.steps p {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55
+}
+
+.step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 12px
+}
+
+.final {
+  flex: 1;
+  text-align: center;
+  background: var(--card);
+  padding: 56px 20px calc(56px + env(safe-area-inset-bottom, 0px))
+}
+
+.final h2 {
+  margin-bottom: 20px
+}
+
+@media (min-width: 640px) {
+  .steps {
+    grid-template-columns: repeat(3, 1fr)
+  }
+
+  .hero {
+    padding-top: 80px
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth
+  }
+}
