@@ -1,5 +1,46 @@
 const { test, expect } = require('@playwright/test');
 const { OWNER, VIEWER, makeData, openApp, getLog, getDb, failWrites, itemNames, card, openMenu, addManually } = require('./helpers');
+const fs = require('fs');
+const path = require('path');
+const FAKE_SRC = fs.readFileSync(path.join(__dirname, 'fake-supabase.js'), 'utf8');
+
+test.describe('Landing page', () => {
+  test('signed-out visitors reach the clean landing route from the app root', async ({ page }) => {
+    const scenario = { session: null, data: makeData(), delayMs: 0, failWrites: false };
+    await page.route(/cdn\.jsdelivr\.net/, (r) => r.fulfill({ contentType: 'application/javascript', body: FAKE_SRC }));
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ contentType: 'text/css', body: '' }));
+    await page.addInitScript((sc) => { window.__FAKE = sc; }, scenario);
+    await page.goto('/');
+
+    await expect(page).toHaveURL('http://localhost:4173/landing/');
+    await expect(page.locator('[data-signin]')).toHaveCount(2);
+  });
+
+  test('both wishlist CTAs use Google sign-in and redirect to the app root', async ({ page }) => {
+    const scenario = { session: null, data: makeData(), delayMs: 0, failWrites: false };
+    await page.route(/cdn\.jsdelivr\.net/, (r) => r.fulfill({ contentType: 'application/javascript', body: FAKE_SRC }));
+    await page.addInitScript((sc) => { window.__FAKE = sc; }, scenario);
+    await page.goto('/landing/#oauth-callback');
+    await expect(page).toHaveURL('http://localhost:4173/landing/#oauth-callback');
+    const stylesheets = await page.evaluate(() => Array.from(document.styleSheets, (sheet) => sheet.href));
+    expect(stylesheets).toContain('http://localhost:4173/landing.css');
+
+    const ctas = page.locator('[data-signin]');
+    await expect(ctas).toHaveCount(2);
+    await ctas.nth(0).click();
+    await expect.poll(async () => (await page.evaluate(() => window.__LOG)).length).toBe(1);
+    const firstCall = await page.evaluate(() => window.__LOG[0]);
+    expect([firstCall.provider, firstCall.redirectTo]).toEqual(['google', 'http://localhost:4173/']);
+
+    await page.reload();
+    await expect(page).toHaveURL('http://localhost:4173/landing/#oauth-callback');
+    await ctas.nth(1).click();
+    await expect.poll(async () => (await page.evaluate(() => window.__LOG)).length).toBe(1);
+
+    const secondCall = await page.evaluate(() => window.__LOG[0]);
+    expect([secondCall.provider, secondCall.redirectTo]).toEqual(['google', 'http://localhost:4173/']);
+  });
+});
 
 /* ------------------------------------------------------------------ */
 test.describe('Sign-in gate', () => {

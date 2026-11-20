@@ -12,8 +12,8 @@
     content="Keep every gift you’d love in one place, then share a simple view-only link.">
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Source+Serif+Pro:wght@700&display=swap">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="landing.css">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="../landing.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -72,38 +72,41 @@
     </section>
   </main>
 
-  <script src="supabase-client.js"></script>
+  <script src="../supabase-client.js"></script>
   <script>
     (function () {
       var body = document.body, statusEl = document.getElementById("cta-status");
       function reveal() { body.classList.remove("checking") }
+      function goToWishlist() { location.replace(getWishlistAppUrl() + "index.html") }
       // Never leave the page blank if the session check is slow
       var fallback = setTimeout(reveal, 1500);
 
       // Signed-in visitors skip the landing page and go straight to their list
       db.auth.getSession().then(function (r) {
         var s = r && r.data && r.data.session;
-        if (s && s.user) { location.replace("index.html"); return }
+        if (s && s.user) { goToWishlist(); return }
         clearTimeout(fallback); reveal();
-      }).catch(function () { clearTimeout(fallback); reveal() });
+      }).catch(function (error) {
+        console.error("Error checking sign-in status:", error);
+        clearTimeout(fallback); reveal();
+      });
 
-      function appUrl() {
-        return (location.origin + location.pathname).replace(/landing\.html$/, "").replace(/\/?$/, "/");
-      }
-
-      async function signIn(btn) {
+      async function signIn() {
         var all = document.querySelectorAll("[data-signin]");
         statusEl.hidden = true;
         all.forEach(function (b) { b.disabled = true });
-        var res = await db.auth.signInWithOAuth({ provider: "google", options: { redirectTo: appUrl() } });
-        if (res && res.error) {
+        try {
+          var res = await signInWithGoogle();
+          if (res && res.error) throw res.error;
+        } catch (error) {
+          console.error("Google sign-in failed:", error);
           all.forEach(function (b) { b.disabled = false });
           statusEl.textContent = "Couldn’t start Google sign-in. Please try again.";
           statusEl.hidden = false;
         }
       }
       document.querySelectorAll("[data-signin]").forEach(function (b) {
-        b.addEventListener("click", function () { signIn(b) });
+        b.addEventListener("click", signIn);
       });
     })();
   </script>

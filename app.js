@@ -614,7 +614,7 @@ async function checkAuthAndToggleUI() {
 
     // 2) Signed out with no link: send them to the landing page
     if (!session || !session.user) {
-      location.replace(location.origin + location.pathname.replace(/index\.html$/, "") + "landing.html");
+      location.replace(location.origin + location.pathname.replace(/index\.html$/, "") + "landing/");
       return;
     }
 
@@ -799,19 +799,6 @@ if (new URLSearchParams(window.location.search).get("debug") === "1") {
     if (dbgClose) dbgClose.onclick = function () { dbgPanel.style.display = "none" };
     setInterval(function () { if (dbgPanel.style.display === "block") updateDebugPanel() }, 3000);
   }
-}
-
-async function signInWithGoogle() {
-  var redirectUrl = (window.location.origin + window.location.pathname)
-    .replace(/index\.html$/, '')
-    .replace(/\/?$/, '/');
-
-  return await db.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: redirectUrl
-    }
-  });
 }
 
 // Wire it up to your button
