@@ -612,11 +612,9 @@ async function checkAuthAndToggleUI() {
     // 1) Someone opened a share link: read-only, served by get_shared_wishlist()
     if (token) { await loadShared(token); return }
 
-    // 2) Signed out with no link: nothing to show yet
+    // 2) Signed out with no link: send them to the landing page
     if (!session || !session.user) {
-      enterViewMode("Sign in to create your own wishlist.");
-      state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
-      render();
+      location.replace(location.origin + location.pathname.replace(/index\.html$/, "") + "landing.html");
       return;
     }
 
