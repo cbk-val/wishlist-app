@@ -20,7 +20,7 @@ async function checkAuthAndToggleUI() {
   var VIEW = false, SNAP = null, KEY = "wishlist-v3", state = null, editId = null, img = "", reorder = false, catIcon = "🎁", catEdit = null, delArm = false, itemDelArm = false;
   var $ = function (id) { return document.getElementById(id) };
   var IC = {
-    plus: "M12 5v14M5 12h14", user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", menu: "M4 7h16M4 12h16M4 17h16", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", check: "M5 12.5l4.5 4.5L19 7.5", x: "M6 6l12 12M18 6L6 18", back: "M15 5l-7 7 7 7",
+    plus: "M12 5v14M5 12h14", chat: "M4 5h16v11H9l-5 4V5z", user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", menu: "M4 7h16M4 12h16M4 17h16", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", check: "M5 12.5l4.5 4.5L19 7.5", x: "M6 6l12 12M18 6L6 18", back: "M15 5l-7 7 7 7",
     share: "M12 15V3M7.5 7.5L12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7",
     link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
     pencil: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
@@ -533,7 +533,7 @@ async function checkAuthAndToggleUI() {
     if (!state.sharing) {
       b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
     } else {
-      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
+      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden. If you stop sharing, the same link works again when you share later.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
     }
   }
   async function startShare() {
@@ -600,6 +600,15 @@ async function checkAuthAndToggleUI() {
     setupAccountMenu(session);
     await checkAuthAndToggleUI();
 
+    function goMyList(){
+      if (token) location.assign(location.origin + location.pathname.replace(/index\.html$/, ""));
+      else closeNav();
+    }
+    ["myList", "navMyList", "navMyList2"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.onclick = goMyList;
+    });
+
     // 1) Someone opened a share link: read-only, served by get_shared_wishlist()
     if (token) { await loadShared(token); return }
 
@@ -644,15 +653,24 @@ async function checkAuthAndToggleUI() {
     return r.data;
   }
 
+  // Link is not shared (or unknown): full-page message instead of the list
+  function showUnavailable() {
+    document.body.classList.add("unavailable");
+    $("unavail").hidden = false;
+    $("viewNote").hidden = true;
+    document.title = "Wishlist not shared";
+  }
+
   async function loadShared(token) {
     enterViewMode("View-only");
     var r = await db.rpc('get_shared_wishlist', { p_token: token });
-    if (r.error || !r.data) {
+    if (r.error) {
       state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
       render();
-      toast("This link isn’t active.");
+      toast("Couldn’t load this wishlist. Try again.");
       return;
     }
+    if (!r.data) { showUnavailable(); return }
     var d = r.data, cats = d.categories || [];
     state.title = d.title || "Wishlist";
     state.categories = cats.length ? cats.map(function (c) { return { id: c.id, name: c.name, icon: c.icon || "🎁", isDefault: false } }) : [PLACEHOLDER_CAT];
