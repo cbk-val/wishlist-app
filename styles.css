@@ -1479,3 +1479,17 @@ a.navitem {
     font-weight: 500;
     cursor: pointer
 }
+
+/* ---------- share dialog ---------- */
+.addrow { display: flex; gap: 8px; align-items: flex-start }
+.addrow .fw { flex: 1; min-width: 0 }
+.addrow .btn { flex: none; min-height: 46px; padding: 0 18px }
+.invites { margin-top: 4px; gap: 8px }
+.invite {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 6px 6px 12px; font-size: 14px
+}
+.invite span { min-width: 0; overflow-wrap: anywhere }
+.invite .btn { padding: 8px 12px; font-size: 13px }
+.btn:disabled, select:disabled, input:disabled { opacity: .6; cursor: progress }

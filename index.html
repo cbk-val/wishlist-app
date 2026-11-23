@@ -37,12 +37,13 @@
         <button class="btn" id="share"><i data-ic="share"></i><span>Share list</span></button>
       </div>
       <p id="viewNote" hidden></p>
-      <section class="unavail" id="unavail" hidden>
+       <section class="unavail" id="unavail" hidden>
         <div>
           <i data-ic="link" data-s="40"></i>
-          <h2>This wishlist isn’t shared right now</h2>
+          <h2 id="unavailTitle">This wishlist isn’t shared right now</h2>
         </div>
-        <p>The owner may have turned sharing off. Ask them to share it again, or double-check the link.</p>
+        <p id="unavailMsg">The owner may have turned sharing off. Ask them to share it again, or double-check the link.</p>
+        <button type="button" id="unavailSignIn" hidden><i data-ic="user"></i><span>Sign in with Google</span></button>
         <button type="button" id="myListUnavail"><i data-ic="home"></i><span>My Wishlist</span></button>
       </section>
       <div class="catbar">

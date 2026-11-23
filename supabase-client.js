@@ -9,11 +9,11 @@ function getWishlistAppUrl() {
   return new URL(path.endsWith("/") ? path : path + "/", window.location.origin).href;
 }
 
-async function signInWithGoogle() {
+async function signInWithGoogle(redirectTo) {
   return await db.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: getWishlistAppUrl()
+      redirectTo: redirectTo || getWishlistAppUrl()
     }
   });
 }

@@ -42,8 +42,7 @@ async function checkAuthAndToggleUI() {
   function ic(n, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + IC[n] + '"/></svg>' }
   [].forEach.call(document.querySelectorAll("i[data-ic]"), function (el) { el.outerHTML = ic(el.dataset.ic, +el.dataset.s || 18) });
 
-  state = { title: "My wishlist", categories: [], items: [], cur: null, sharing: false, wishlistId: null, shareToken: null };
-
+  state = { title: "My wishlist", categories: [], items: [], cur: null, privacy: "private", invites: [], wishlistId: null };
   var PLACEHOLDER_CAT = { id: "x", name: "Wishlist", icon: "🎁", isDefault: false };
 
   async function loadFromSupabase() {
@@ -512,47 +511,134 @@ async function checkAuthAndToggleUI() {
     if (e.key === "Escape") {
       closeMenus();
       document.querySelectorAll("dialog[open]").forEach(function (dlg) {
+        if (dlg.id === "shDlg") { requestCloseShare(); return }
         dlg.close();
       });
     }
   });
 
-  var creating = false;
-  function shareUrl() { return location.origin + location.pathname.replace(/index\.html$/, "") + "?s=" + state.shareToken }
+    /* ---------- sharing ---------- */
+  var PRIV = {
+    "private": ["Private", "Only you can view this wishlist"],
+    "restricted": ["Restricted", "Only people you invite by email can view this wishlist"],
+    "public": ["Public", "Anyone with the link can view this wishlist, even if signed out"]
+  };
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  var shDraft = null, shLoading = false, shSaving = false, shMsg = null, shEmail = "", shEmailErr = "", shCopied = false, shWarned = false, shCopyT = null;
 
-  // Turning sharing off rotates the token in the database, so the old link stops working.
-  async function setSharing(on) {
-    var r = await db.from('wishlists').update({ sharing_active: on }).eq('id', state.wishlistId).select('share_token, sharing_active').single();
-    if (r.error || !r.data) { toast("Couldn’t update sharing. Try again."); return false }
-    state.sharing = !!r.data.sharing_active; state.shareToken = r.data.share_token;
-    return true;
-  }
+  function shareUrl() { return location.origin + location.pathname.replace(/index\.html$/, "") + "?list=" + state.wishlistId }
+  function sameSet(a, b) { return a.length === b.length && a.every(function (x) { return b.indexOf(x) > -1 }) }
+  function shDirty() { return !!shDraft && (shDraft.privacy !== state.privacy || !sameSet(shDraft.invites, state.invites)) }
+
   function renderShare() {
-    var b = $("shBody");
-    if (creating) { b.innerHTML = '<p class="hint">Creating your view-only link…</p>'; return }
-    if (!state.sharing) {
-      b.innerHTML = '<p class="hint">Create a view-only link. Anyone you send it to can see your gifts but can’t change anything. Gifts you’ve marked as got stay hidden.</p><button class="btn primary wide" id="shOn">' + ic("link") + '<span>Create view-only link</span></button>';
-    } else {
-      b.innerHTML = '<p class="hint">Your view-only link always shows your latest list. Gifts you’ve marked as got stay hidden. If you stop sharing, the same link works again when you share later.</p><label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '"><div class="foot"><button class="btn primary" id="shCopy">' + ic("link") + '<span>Copy link</span></button>' + (navigator.share ? '<button class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : '') + '</div><button class="btn red-o wide" id="shOff" style="margin-top:14px">' + ic("trash") + '<span>Stop sharing</span></button>';
+    var b = $("shBody"), d = shDraft, msg = "";
+    if (shMsg) msg = '<p class="banner" role="' + (shMsg.kind === "error" ? "alert" : "status") + '" style="margin:12px 0 0' + (shMsg.kind === "error" ? ";color:var(--red)" : "") + '">' + esc(shMsg.text) + '</p>';
+    if (!d) {
+      b.innerHTML = shLoading ? '<p class="hint">Loading sharing settings…</p>' : msg + '<div class="foot"><button type="button" class="btn" id="shClose">Close</button></div>';
+      return;
     }
+    var dis = shSaving ? " disabled" : "";
+    var h = '<label for="shPriv">Who can view</label><select id="shPriv"' + dis + '>' +
+      Object.keys(PRIV).map(function (k) { return '<option value="' + k + '"' + (d.privacy === k ? " selected" : "") + '>' + PRIV[k][0] + '</option>' }).join("") +
+      '</select><p class="hint" style="margin:8px 0 0">' + PRIV[d.privacy][1] + '</p>';
+
+    if (d.privacy === "restricted") {
+      h += '<label for="shEmail">Invite by email</label><div class="addrow"><div class="fw"><input id="shEmail" type="email" inputmode="email" autocomplete="off" placeholder="friend@example.com" value="' + esc(shEmail) + '"' + (shEmailErr ? ' class="err" aria-invalid="true"' : "") + dis + '></div><button type="button" class="btn" id="shAdd"' + dis + '>Add</button></div>';
+      if (shEmailErr) h += '<p class="hint" id="shEmailErr" role="alert" style="color:var(--red);margin:6px 0 0">' + esc(shEmailErr) + '</p>';
+      h += '<label>Invited access (' + d.invites.length + ')</label>';
+      h += d.invites.length
+        ? '<ul class="invites">' + d.invites.map(function (e) { return '<li class="invite"><span>' + esc(e) + '</span><button type="button" class="btn" data-rm="' + esc(e) + '" aria-label="Remove ' + esc(e) + '"' + dis + '>Remove</button></li>' }).join("") + '</ul>'
+        : '<p class="hint">No one invited yet.</p>';
+    }
+
+    if (d.privacy !== "private") {
+      h += '<label for="shUrl">View-only link</label><input id="shUrl" readonly value="' + esc(shareUrl()) + '">' +
+        '<div class="foot"><button type="button" class="btn' + (shCopied ? " ok" : "") + '" id="shCopy">' + ic(shCopied ? "check" : "link") + '<span>' + (shCopied ? "Copied!" : "Copy Link") + '</span></button>' +
+        (navigator.share ? '<button type="button" class="btn" id="shSend">' + ic("share") + '<span>Share…</span></button>' : "") + '</div>';
+      if (shDirty()) h += '<p class="hint" style="margin:8px 0 0">Save your changes so this link works the way you set it.</p>';
+    }
+
+    h += msg + '<div class="foot"><button type="button" class="btn" id="shClose"' + dis + '>Close</button><button type="button" class="btn primary" id="shSave"' + dis + '>' + ic("check") + '<span>' + (shSaving ? "Saving…" : "Save") + '</span></button></div>';
+    b.innerHTML = h;
   }
-  async function startShare() {
-    if (state.sharing) { renderShare(); return }
-    creating = true; renderShare();
-    await setSharing(true);
-    creating = false; renderShare();
+
+  async function openShare() {
+    shDraft = null; shMsg = null; shEmail = ""; shEmailErr = ""; shCopied = false; shWarned = false; shLoading = true;
+    renderShare(); $("shDlg").showModal();
+    var r = await db.from('wishlist_invites').select('email').eq('wishlist_id', state.wishlistId).order('email', { ascending: true });
+    shLoading = false;
+    if (r.error) { shMsg = { kind: "error", text: "Couldn’t load your sharing settings. Close this and try again." }; renderShare(); return }
+    state.invites = (r.data || []).map(function (x) { return String(x.email).toLowerCase() });
+    shDraft = { privacy: state.privacy, invites: state.invites.slice() };
+    renderShare();
   }
-  function openShare() { if (!$("shDlg").open) $("shDlg").showModal(); startShare() }
+
+  function addInvite() {
+    var v = ($("shEmail").value || "").trim().toLowerCase(), err = "";
+    shEmail = v;
+    if (!v) err = "Enter an email address";
+    else if (!EMAIL_RE.test(v)) err = "That doesn’t look like a valid email";
+    else if (shDraft.invites.indexOf(v) > -1) err = "That email is already invited";
+    if (err) { shEmailErr = err; renderShare(); $("shEmail").focus(); return }
+    shDraft.invites.push(v); shDraft.invites.sort();
+    shEmail = ""; shEmailErr = ""; shMsg = null; shWarned = false;
+    renderShare(); $("shEmail").focus();
+  }
+
+  async function saveShare() {
+    if (!shDraft || shSaving) return;
+    shSaving = true; shMsg = null; shWarned = false; renderShare();
+    var d = shDraft, r;
+    try { r = await db.rpc('save_sharing', { p_privacy: d.privacy, p_emails: d.invites }) } catch (x) { r = { error: x } }
+    shSaving = false;
+    if (r.error) { shMsg = { kind: "error", text: "Couldn’t save your sharing settings. Check your connection and try again." }; renderShare(); return }
+    state.privacy = d.privacy; state.invites = d.invites.slice();
+    $("shDlg").close(); toast("Sharing settings saved");
+  }
+
+  // Close asks once before throwing away unsaved changes.
+  function requestCloseShare() {
+    if (shSaving) return;
+    if (shDirty() && !shWarned) {
+      shWarned = true; shMsg = { kind: "warning", text: "You have unsaved changes. Save them, or close again to discard." };
+      renderShare(); return;
+    }
+    $("shDlg").close();
+  }
+
   $("share").onclick = openShare;
+  $("shDlg").addEventListener("cancel", function (e) { e.preventDefault(); requestCloseShare() });
+  $("shDlg").addEventListener("close", function () { shDraft = null; shMsg = null; shWarned = false });
+  $("shDlg").addEventListener("change", function (e) {
+    if (e.target.id !== "shPriv" || !shDraft) return;
+    shDraft.privacy = e.target.value; shMsg = null; shWarned = false; shEmailErr = "";
+    renderShare(); $("shPriv").focus();
+  });
+  $("shDlg").addEventListener("input", function (e) {
+    if (e.target.id !== "shEmail") return;
+    shEmail = e.target.value;
+    if (shEmailErr) { shEmailErr = ""; e.target.classList.remove("err"); e.target.removeAttribute("aria-invalid"); var p = $("shEmailErr"); if (p) p.remove() }
+  });
+  $("shDlg").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.id === "shEmail") { e.preventDefault(); addInvite() }
+  });
   $("shDlg").addEventListener("click", async function (e) {
-    if (e.target === $("shDlg") || e.target.closest("[data-close]")) { $("shDlg").close(); return }
-    var b = e.target.closest("button"); if (!b) return;
-    if (b.id === "shCopy") { var ok = false; try { await navigator.clipboard.writeText(shareUrl()); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } } toast(ok ? "Link copied to your clipboard" : "Couldn’t copy automatically."); return }
+    if (e.target === $("shDlg") || e.target.closest("[data-close]")) { requestCloseShare(); return }
+    var b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.id === "shClose") { requestCloseShare(); return }
+    if (b.id === "shSave") { saveShare(); return }
+    if (b.id === "shAdd") { addInvite(); return }
+    if (b.dataset.rm) {
+      shDraft.invites = shDraft.invites.filter(function (x) { return x !== b.dataset.rm });
+      shMsg = null; shWarned = false; renderShare(); return;
+    }
     if (b.id === "shSend") { navigator.share({ title: state.title, url: shareUrl() }).catch(function () { }); return }
-    if (b.id === "shOn") { startShare(); return }
-    if (b.id === "shOff") {
-      if (await setSharing(false)) toast("Sharing stopped");
-      renderShare();
+    if (b.id === "shCopy") {
+      var ok = false;
+      try { await navigator.clipboard.writeText(shareUrl()); ok = true } catch (x) { try { $("shUrl").select(); ok = document.execCommand("copy") } catch (y) { } }
+      if (!ok) { notify("warning", "Couldn’t copy automatically. Select the link and copy it."); return }
+      shCopied = true; renderShare();
+      clearTimeout(shCopyT); shCopyT = setTimeout(function () { shCopied = false; if ($("shDlg").open && shDraft) renderShare() }, 2000);
     }
   });
 
@@ -594,38 +680,48 @@ async function checkAuthAndToggleUI() {
   async function boot() {
     document.body.classList.remove("pending");
 
-    var token = new URLSearchParams(location.search).get("s");
+        var qs = new URLSearchParams(location.search), token = qs.get("s"), listId = qs.get("list");
     var sessionRes = await db.auth.getSession();
     var session = sessionRes && sessionRes.data && sessionRes.data.session;
     setupAccountMenu(session);
     await checkAuthAndToggleUI();
 
-    function goMyList(){
-      if (token) location.assign(location.origin + location.pathname.replace(/index\.html$/, ""));
+    function goMyList() {
+      if (token || listId) location.assign(location.origin + location.pathname.replace(/index\.html$/, ""));
       else closeNav();
     }
-    ["myList", "navMyList", "navMyList2"].forEach(function (id) {
+    ["myList", "myListUnavail", "navMyList", "navMyList2"].forEach(function (id) {
       var el = $(id);
       if (el) el.onclick = goMyList;
     });
 
-    // 1) Someone opened a share link: read-only, served by get_shared_wishlist()
+    // 1) Old-style share link (?s=token). Kept so links already sent still work.
     if (token) { await loadShared(token); return }
 
-    // 2) Signed out with no link: send them to the landing page
+    // 2) ?list=<wishlist_id>: the owner gets their normal editable view; everyone else gets read-only
+    if (listId) {
+      var isMine = false;
+      if (session && session.user && UUID_RE.test(listId)) {
+        var own = await db.from('wishlists').select('id').eq('id', listId).eq('owner_id', session.user.id).maybeSingle();
+        isMine = !!(own && own.data);
+      }
+      if (!isMine) { await loadByList(listId, !!(session && session.user)); return }
+    }
+
+    // 3) Signed out with no link: send them to the landing page
     if (!session || !session.user) {
       location.replace(location.origin + location.pathname.replace(/index\.html$/, "") + "landing/");
       return;
     }
 
-    // 3) Signed in: get (or create) THIS user's wishlist
+    //4) Signed in: get (or create) THIS user's wishlist
     var wl = await ensureWishlist();
     if (!wl) return;
     state.wishlistId = wl.id;
     state.title = wl.title || "My wishlist";
     state.shareToken = wl.share_token;
-    state.sharing = !!wl.sharing_active;
-
+    state.privacy = wl.privacy || "private";
+    
     VIEW = false;
     document.body.classList.remove("viewer");
     $("title").contentEditable = "true";
@@ -659,17 +755,34 @@ async function checkAuthAndToggleUI() {
     document.title = "Wishlist not shared";
   }
 
-  async function loadShared(token) {
-    enterViewMode("View-only");
-    var r = await db.rpc('get_shared_wishlist', { p_token: token });
-    if (r.error) {
-      state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
-      render();
-      toast("Couldn’t load this wishlist. Try again.");
-      return;
-    }
-    if (!r.data) { showUnavailable(); return }
-    var d = r.data, cats = d.categories || [];
+    var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // "You don't have access" state. Signed-out visitors get a Sign in button that returns them to this exact link.
+  function showNoAccess(signedIn) {
+    showUnavailable();
+    $("unavailTitle").textContent = "You don’t have access to this wishlist";
+    $("unavailMsg").textContent = signedIn
+      ? "Ask the owner to invite the email you signed in with, or check that you’re using the right account."
+      : "Sign in with the email the owner invited, or ask them to make the list public.";
+    $("unavailSignIn").hidden = signedIn;
+    $("myListUnavail").hidden = !signedIn;
+    var bar = $("signin-bar"); if (bar) bar.hidden = true;
+    document.title = "No access";
+  }
+  $("unavailSignIn").onclick = async function () {
+    var b = this; b.disabled = true;
+    try { var r = await signInWithGoogle(location.href); if (r && r.error) throw r.error }
+    catch (err) { b.disabled = false; notify("error", "Couldn’t start Google sign-in. Please try again.") }
+  };
+
+  function loadFailed() {
+    state.title = "Wishlist"; state.categories = [PLACEHOLDER_CAT]; state.items = []; state.cur = PLACEHOLDER_CAT.id;
+    render();
+    toast("Couldn’t load this wishlist. Try again.");
+  }
+
+  function applyShared(d) {
+    var cats = d.categories || [];
     state.title = d.title || "Wishlist";
     state.categories = cats.length ? cats.map(function (c) { return { id: c.id, name: c.name, icon: c.icon || "🎁", isDefault: false } }) : [PLACEHOLDER_CAT];
     state.items = [];
@@ -681,6 +794,25 @@ async function checkAuthAndToggleUI() {
     state.cur = state.categories[0].id;
     if (d.updated_at) $("viewNote").textContent = "View-only · Updated " + new Date(d.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
     render(); showCat();
+  }
+
+  // Old ?s=<token> links
+  async function loadShared(token) {
+    enterViewMode("View-only");
+    var r = await db.rpc('get_shared_wishlist', { p_token: token });
+    if (r.error) { loadFailed(); return }
+    if (!r.data) { showUnavailable(); return }
+    applyShared(r.data);
+  }
+
+  // New ?list=<wishlist_id> links (public, restricted, or private; the server decides)
+  async function loadByList(id, signedIn) {
+    enterViewMode("View-only");
+    if (!UUID_RE.test(id)) { showNoAccess(signedIn); return }
+    var r = await db.rpc('get_wishlist_for_viewer', { p_list: id });
+    if (r.error) { loadFailed(); return }
+    if (!r.data || r.data.status !== "ok") { showNoAccess(signedIn); return }
+    applyShared(r.data);
   }
 
   $("title").addEventListener("input", function () { clearErr($("title")); var t = $("title").textContent.trim(); if (t) { state.title = t; save(); document.title = t } });
